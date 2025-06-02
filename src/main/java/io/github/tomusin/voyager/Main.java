@@ -10,10 +10,8 @@ import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import org.slf4j.LoggerFactory;
+import org.tinylog.configuration.Configuration;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.LoggerContext;
 import io.github.tomusin.voyager.readers.JTReader;
 
 /**
@@ -40,9 +38,8 @@ public class Main
 	    } else {
 	        levelStr = System.getProperty("log.level", "WARN");
 	    }
-	    Level level = Level.toLevel(levelStr);
-	    LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
-	    context.getLogger("ROOT").setLevel(level);
+	    
+	    Configuration.set("level", levelStr);
 
 	    // PGO batch run
 	    if ("-pgoRun".equals(args[0])) {
