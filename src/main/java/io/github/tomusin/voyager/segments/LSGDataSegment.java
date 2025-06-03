@@ -11,8 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.tinylog.Logger;
 
 import io.github.tomusin.lsgElements.GroupNodeElementRecord;
 import io.github.tomusin.lsgElements.MaterialAttributeElementRecord;
@@ -39,7 +38,6 @@ public class LSGDataSegment extends DataSegment{
 	
 	private static final Set<Integer> EMPTY_INT_SET = Set.of();
 	private static final String END_OF_ELEMENTS_SIGNIFIER = "{FFFFFFFF-FFFF-FFFF-FF-FF-FF-FF-FF-FF-FF-FF}";
-	private static final Logger LOGGER = LoggerFactory.getLogger(LSGDataSegment.class);
 	ByteOrder fileByteOrder;
 
 	public LSGDataSegment(SegmentHeaderRecord segmentHeaderRecord, MappedByteBuffer buffer, int segmentStartIndex, ByteOrder fileByteOrder) {
@@ -48,12 +46,12 @@ public class LSGDataSegment extends DataSegment{
 		this.fileByteOrder = fileByteOrder;
 		buffer.order(fileByteOrder);
 		// We have a LSG with Logical Element Header Compressed
-		LOGGER.info("LSGClassStartIndex: {}", segmentStartIndex + 16 + 4 + 4);
+		Logger.info("LSGClassStartIndex: {}", segmentStartIndex + 16 + 4 + 4);
 		long compressionFlag = ReadFromBufferUtils.readUnsignedInt(buffer, segmentStartIndex + 16 + 4 + 4);
 		int compressedDataLength = buffer.getInt(segmentStartIndex + 16 + 4 + 4 + 4);
 		int compressionAlgorithm = ReadFromBufferUtils.readUnsignedByte(buffer, segmentStartIndex + 16 + 4 + 4 + 4 + 4);
-		LOGGER.info("Length in segment header: {}", segmentHeaderRecord.segmentLength());
-		LOGGER.info("CompressionFlag: {}, compressedDataLength: {}, compressionAlgorithm: {}", compressionFlag,	compressedDataLength, compressionAlgorithm);
+		Logger.info("Length in segment header: {}", segmentHeaderRecord.segmentLength());
+		Logger.info("CompressionFlag: {}, compressedDataLength: {}, compressionAlgorithm: {}", compressionFlag,	compressedDataLength, compressionAlgorithm);
 
 		if (compressionFlag == 3 && compressionAlgorithm == 3) {
 			try {
@@ -61,7 +59,7 @@ public class LSGDataSegment extends DataSegment{
 				
 				byte[] decompressedLSGSegment = ReadFromBufferUtils.decompressLZMA2FromBuffer(buffer, segmentStartIndex + 16 + 4 + 4 + 4 + 4 + 1, compressedDataLength - 1, fileByteOrder);
 				long endTimeUntilDecompressed = System.nanoTime();
-				LOGGER.info("Time until decompressed: {}", (endTimeUntilDecompressed - startTime)/ 1_000_000);
+				Logger.info("Time until decompressed: {}", (endTimeUntilDecompressed - startTime)/ 1_000_000);
 				ByteBuffer decompressedLSGSegmentBuffer = ByteBuffer.wrap(decompressedLSGSegment).order(fileByteOrder);
 				Map<Integer ,LogicalElementHeaderRecord> logicalElementHeaderRecordMap = new HashMap<>();
 				
@@ -79,8 +77,8 @@ public class LSGDataSegment extends DataSegment{
 							guidsUsed.add(logicalElementHeaderRecord.objectTypeID().toLowerCase());
 						} else if (END_OF_ELEMENTS_SIGNIFIER.equals(lastGUID)) { // Unfortunately, there can be several End-Of-Elements signifier. Thats's why I need this workaround
 							lastGUID = "";
-							if (LOGGER.isInfoEnabled()) {
-								LOGGER.info("Unknown GUID: {}", logicalElementHeaderRecord.objectTypeID());								
+							if (Logger.isInfoEnabled()) {
+								Logger.info("Unknown GUID: {}", logicalElementHeaderRecord.objectTypeID());								
 							}
 							break;
 						} else {
@@ -88,18 +86,18 @@ public class LSGDataSegment extends DataSegment{
 							startIndex += logicalElementHeaderRecord.elementLength() + 4;
 						}
 					} else if (END_OF_ELEMENTS_SIGNIFIER.equals(logicalElementHeaderRecord.objectTypeID())) { // Do not break here, there can be several End-Of-Elements signifier
-						LOGGER.info("Found identifier to signal End-Of-Elements");
+						Logger.info("Found identifier to signal End-Of-Elements");
 						lastGUID = logicalElementHeaderRecord.objectTypeID();
 						startIndex += logicalElementHeaderRecord.elementLength() + 4;
 					}
 				}
 				long timeUntillogicalElementHeaderRecordMapIsBuilt = System.nanoTime();
-				LOGGER.info("Time until timeUntillogicalElementHeaderRecordMapIsBuilt: {}", (timeUntillogicalElementHeaderRecordMapIsBuilt - startTime)/ 1_000_000);
-				LOGGER.info("Time for timeUntillogicalElementHeaderRecordMapIsBuilt: {}", (timeUntillogicalElementHeaderRecordMapIsBuilt - endTimeUntilDecompressed)/ 1_000_000);
-				LOGGER.info("StartIndex is now: {}, capacity is: {}", startIndex, decompressedLSGSegmentBuffer.capacity());
+				Logger.info("Time until timeUntillogicalElementHeaderRecordMapIsBuilt: {}", (timeUntillogicalElementHeaderRecordMapIsBuilt - startTime)/ 1_000_000);
+				Logger.info("Time for timeUntillogicalElementHeaderRecordMapIsBuilt: {}", (timeUntillogicalElementHeaderRecordMapIsBuilt - endTimeUntilDecompressed)/ 1_000_000);
+				Logger.info("StartIndex is now: {}, capacity is: {}", startIndex, decompressedLSGSegmentBuffer.capacity());
 
 				PropertyTableRecord propertyTableRecord = PropertyTableRecord.fromByteBuffer(decompressedLSGSegmentBuffer, startIndex);
-				LOGGER.info("PropertyTableRecord is: {}", propertyTableRecord);
+				Logger.info("PropertyTableRecord is: {}", propertyTableRecord);
 				
 				Map<Integer, TreeNode> treeNodeMap = new HashMap<>();
 				Set<Integer> childObjectIDs = new HashSet<>();
@@ -114,28 +112,28 @@ public class LSGDataSegment extends DataSegment{
 			            elementMap.put(header, optType.get().deserialize(decompressedLSGSegmentBuffer, header.jtEndIndex()));
 			        } else {
 			            // Optional logging
-			            LOGGER.warn("Unknown NodeElementType for objectTypeID: {}", header.objectTypeID());
+			            Logger.warn("Unknown NodeElementType for objectTypeID: {}", header.objectTypeID());
 			        }
 			    });
 				
 				long timeUntilElementMapIsBuilt = System.nanoTime();
-				LOGGER.info("Time until timeUntilElementMapIsBuilt: {}", (timeUntilElementMapIsBuilt - startTime)/ 1_000_000);
-				LOGGER.info("Time for timeUntilElementMapIsBuilt: {}", (timeUntilElementMapIsBuilt -timeUntillogicalElementHeaderRecordMapIsBuilt)/ 1_000_000);
+				Logger.info("Time until timeUntilElementMapIsBuilt: {}", (timeUntilElementMapIsBuilt - startTime)/ 1_000_000);
+				Logger.info("Time for timeUntilElementMapIsBuilt: {}", (timeUntilElementMapIsBuilt -timeUntillogicalElementHeaderRecordMapIsBuilt)/ 1_000_000);
 
 				// First, create TreeNode objects for each LogicalElement
 
 				createTreeNodeForEachLogicalElementParallel(logicalElementHeaderRecordMap, propertyTableRecord, treeNodeMap, elementMap);
 				long createTreeNodeForEachLogicalElementParallel = System.nanoTime();
-				LOGGER.info("Time until createTreeNodeForEachLogicalElementParallel: {}", (createTreeNodeForEachLogicalElementParallel - startTime)/ 1_000_000);
-				LOGGER.info("Time for createTreeNodeForEachLogicalElementParallel: {}", (createTreeNodeForEachLogicalElementParallel -timeUntilElementMapIsBuilt)/ 1_000_000);
+				Logger.info("Time until createTreeNodeForEachLogicalElementParallel: {}", (createTreeNodeForEachLogicalElementParallel - startTime)/ 1_000_000);
+				Logger.info("Time for createTreeNodeForEachLogicalElementParallel: {}", (createTreeNodeForEachLogicalElementParallel -timeUntilElementMapIsBuilt)/ 1_000_000);
 				attachAttributesToTreeNodes(decompressedLSGSegmentBuffer, logicalElementHeaderRecordMap, treeNodeMap, elementMap);
 				long attachAttributesToTreeNodes = System.nanoTime();
-				LOGGER.info("Time until attachAttributesToTreeNodes: {}", (attachAttributesToTreeNodes - startTime)/ 1_000_000);
-				LOGGER.info("Time for attachAttributesToTreeNodes: {}", (attachAttributesToTreeNodes -timeUntilElementMapIsBuilt)/ 1_000_000);
+				Logger.info("Time until attachAttributesToTreeNodes: {}", (attachAttributesToTreeNodes - startTime)/ 1_000_000);
+				Logger.info("Time for attachAttributesToTreeNodes: {}", (attachAttributesToTreeNodes -timeUntilElementMapIsBuilt)/ 1_000_000);
 				connectTreeHierarchy(decompressedLSGSegmentBuffer, logicalElementHeaderRecordMap, treeNodeMap, childObjectIDs, elementMap);
 				long connectTreeHierarchy = System.nanoTime();
-				LOGGER.info("Time until connectTreeHierarchy: {}", (connectTreeHierarchy - startTime)/ 1_000_000);
-				LOGGER.info("Time for connectTreeHierarchy: {}", (connectTreeHierarchy -attachAttributesToTreeNodes)/ 1_000_000);
+				Logger.info("Time until connectTreeHierarchy: {}", (connectTreeHierarchy - startTime)/ 1_000_000);
+				Logger.info("Time for connectTreeHierarchy: {}", (connectTreeHierarchy -attachAttributesToTreeNodes)/ 1_000_000);
 				
 				for (TreeNode node : treeNodeMap.values()) {
 				    if (!childObjectIDs.contains(node.objectID)) {
@@ -144,7 +142,7 @@ public class LSGDataSegment extends DataSegment{
 				}
 				
 			} catch (IOException _) {
-				LOGGER.error("Could not decomresss data segment");
+				Logger.error("Could not decomresss data segment");
 			}
 		}
 	}

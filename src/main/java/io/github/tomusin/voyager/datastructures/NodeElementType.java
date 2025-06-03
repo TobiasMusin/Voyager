@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.BiFunction;
 
-import io.github.tomusin.lsgDataRecords.MetaDataNodeDataRecord;
 import io.github.tomusin.lsgElements.BaseNodeElementRecord;
 import io.github.tomusin.lsgElements.GroupNodeElementRecord;
 import io.github.tomusin.lsgElements.InstanceNodeElementRecord;

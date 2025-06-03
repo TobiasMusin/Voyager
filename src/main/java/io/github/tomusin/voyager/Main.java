@@ -32,14 +32,20 @@ public class Main
 	    }
 
 	    // Initialize logging
-	    String levelStr = "WARN";
+	    String levelStr;
 	    if ("INFO".equals(args[0])) {
 	        levelStr = System.getProperty("log.level", "INFO");
 	    } else {
 	        levelStr = System.getProperty("log.level", "WARN");
 	    }
-	    
-	    Configuration.set("level", levelStr);
+
+	    try {
+	        Class.forName("org.tinylog.Configuration");
+	        Configuration.set("level", levelStr);
+	    } catch (ClassNotFoundException ignored) {
+	        // tinylog not present: skip config
+	    }
+
 
 	    // PGO batch run
 	    if ("-pgoRun".equals(args[0])) {

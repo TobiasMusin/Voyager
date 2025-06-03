@@ -4,11 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
-import io.github.tomusin.voyager.segments.LSGDataSegment;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record BaseNodeDataRecord(

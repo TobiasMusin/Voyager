@@ -16,27 +16,16 @@
 	</parent>
 
 	<dependencies>
-		<!-- SLF4J API -->
-		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-api</artifactId>
-			<version>1.7.36</version>
-		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.tinylog/tinylog-impl -->
 		<dependency>
-		  <groupId>org.tinylog</groupId>
-		  <artifactId>tinylog-api</artifactId>
-		  <version>2.7.0</version>
+			<groupId>org.tinylog</groupId>
+			<artifactId>tinylog-api</artifactId>
+			<version>2.7.0</version>
 		</dependency>
 		<dependency>
-		  <groupId>org.tinylog</groupId>
-		  <artifactId>tinylog-impl</artifactId>
-		  <version>2.7.0</version>
-		</dependency>
-		<dependency>
-		  <groupId>org.tinylog</groupId>
-		  <artifactId>slf4j-tinylog</artifactId>
-		  <version>2.7.0</version>
+			<groupId>org.tinylog</groupId>
+			<artifactId>tinylog-impl</artifactId>
+			<version>2.7.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.tukaani</groupId>
@@ -89,7 +78,6 @@
 			<id>native</id>
 			<build>
 				<plugins>
-
 					<!-- Maven Shade Plugin to create an uber JAR and remove
 					signatures -->
 					<plugin>
@@ -143,23 +131,16 @@
 							<mainClass>io.github.tomusin.voyager.Main</mainClass>
 							<buildArgs>
 								<buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-			    <buildArg>
-								--no-fallback</buildArg>
-								<!-- Optional: uncomment for detailed exceptions -->
-								<!--
-								<buildArg>-H:+ReportExceptionStackTraces</buildArg> -->Arg> <buildArg>
-								-H:+TrackPrimitiveValues</buildArg>
-			    <buildArg>
-								-H:+PrintAnalysisCallTree</buildArg>
-			    <buildArg>
-								-H:+UsePredicates</buildArg>
-			    <buildArg>-O1</buildArg> <!--
-								Valid optimization levels: Os, Ob, O0, O1, O2,
-								O3 -->
-			    <buildArg>
-								-H:+RemoveSaturatedTypeFlows</buildArg>
-			    <buildArg>
-								-H:+InlineDuringParsing</buildArg>
+			    				<buildArg>--no-fallback</buildArg>
+								<buildArg>-H:+TrackPrimitiveValues</buildArg>
+			    				<buildArg>-H:+PrintAnalysisCallTree</buildArg>
+			    				<buildArg>-H:+UsePredicates</buildArg>
+			    				<buildArg>-O2</buildArg> <!--Valid optimization levels: Os, Ob, O0, O1, O2,	O3 -->
+			    				<buildArg>-H:+RemoveSaturatedTypeFlows</buildArg>
+								<buildArg>-H:+RemoveUnusedSymbols</buildArg>
+								<buildArg>-H:GenerateDebugInfo=0</buildArg>
+								<buildArg>-H:IncludeResources=tinylog\\.properties</buildArg>
+								<buildArg>--initialize-at-build-time=io.github.tomusin</buildArg>
 							</buildArgs>
 						</configuration>
 					</plugin>
@@ -167,6 +148,4 @@
 			</build>
 		</profile>
 	</profiles>
-
-
 </project>

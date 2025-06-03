@@ -1,29 +1,20 @@
 package io.github.tomusin.voyager.readers;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.tukaani.xz.LZMAInputStream;
-import org.tukaani.xz.XZInputStream;
+import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.fileRecords.FileHeaderRecord;
 import io.github.tomusin.voyager.fileRecords.SegmentHeaderRecord;
 import io.github.tomusin.voyager.fileRecords.TOCRecord;
-import io.github.tomusin.voyager.segments.DataSegment;
 import io.github.tomusin.voyager.segments.DataSegmentType;
 import io.github.tomusin.voyager.segments.LSGDataSegment;
 import io.github.tomusin.voyager.segments.MetaDataSegment;
@@ -31,7 +22,6 @@ import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public class JTReader {
 	
-	private static final Logger LOGGER = LoggerFactory.getLogger(JTReader.class);
 	FileHeaderRecord fileHeaderRecord;
 	
 	// Seems most writers ignore the U64 Segment offset and write I32 instead
@@ -65,7 +55,7 @@ public class JTReader {
                     .toArray();
 	        
 	        Map<String, SegmentHeaderRecord> segmentHeaderMap = new ConcurrentHashMap<>();
-	        LOGGER.info("----------------------------------------------------------");
+	        Logger.info("----------------------------------------------------------");
 
 	        Arrays.stream(segmentOffsets).forEach(segmentHeaderOffset -> readSegmentHeaderEntry(buffer, segmentHeaderOffset, segmentHeaderMap));
 
@@ -73,7 +63,7 @@ public class JTReader {
 	        e.printStackTrace();
 	    }
 	    long endTime = System.nanoTime();
-	    LOGGER.info("Total time: {} ms", (endTime - startTime) / 1_000_000);
+	    Logger.info("Total time: {} ms", (endTime - startTime) / 1_000_000);
 	}
 	
 	private void readTOCEntry(MappedByteBuffer buffer, int startIndex, Map<String, TOCRecord> tocMap, boolean i32InsteadOfU64) {
@@ -90,10 +80,10 @@ public class JTReader {
 		}
 		long segmentAttributes = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + 16 + 8 + 4);
 		tocMap.put(segmentGUID, new TOCRecord(segmentGUID, segmentOffset, segmentLength, segmentAttributes));
-		LOGGER.info("segmentOffset is: {}", segmentOffset);
-		LOGGER.info("Created TOCRecord: {}", tocMap.get(segmentGUID));
-		LOGGER.info("SegmentType: {} -> {}", tocMap.get(segmentGUID).getSegmentType(), DataSegmentType.getByTypeId((int) tocMap.get(segmentGUID).getSegmentType()).getContents());
-		LOGGER.info("Length in TOC Entry is: {}", tocMap.get(segmentGUID).segmentLength());
+		Logger.info("segmentOffset is: {}", segmentOffset);
+		Logger.info("Created TOCRecord: {}", tocMap.get(segmentGUID));
+		Logger.info("SegmentType: {} -> {}", tocMap.get(segmentGUID).getSegmentType(), DataSegmentType.getByTypeId((int) tocMap.get(segmentGUID).getSegmentType()).getContents());
+		Logger.info("Length in TOC Entry is: {}", tocMap.get(segmentGUID).segmentLength());
 	}
 	
 	private void readSegmentHeaderEntry(MappedByteBuffer buffer, int startIndex, Map<String, SegmentHeaderRecord> segmentHeaderMap) {
@@ -101,7 +91,7 @@ public class JTReader {
 		int segmentType = buffer.getInt(startIndex + 16);
 		int segmentLength = buffer.getInt(startIndex + 16 + 4);
 		segmentHeaderMap.put(segmentGUID, new SegmentHeaderRecord(segmentGUID, segmentType, segmentLength));
-		LOGGER.info("SegmentHeader type: {}", segmentHeaderMap.get(segmentGUID).segmentType());
+		Logger.info("SegmentHeader type: {}", segmentHeaderMap.get(segmentGUID).segmentType());
 
 		if (segmentHeaderMap.get(segmentGUID).segmentType() == 1) {
 			LSGDataSegment lsgDataSegment = new LSGDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
@@ -143,8 +133,8 @@ public class JTReader {
 		String version = getVersionAndCheckForCorruption(buffer);
 		fileByteOrder = buffer.get(80) == 0 ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN;
 		boolean fileByteOrderIsSystemByteOrder = fileByteOrder.equals(ByteOrder.nativeOrder());
-		LOGGER.info(version);
-		LOGGER.info("File Byte order is {}. Byte order matches Systems ByteOrder: {}", fileByteOrder, fileByteOrderIsSystemByteOrder);
+		Logger.info(version);
+		Logger.info("File Byte order is {}. Byte order matches Systems ByteOrder: {}", fileByteOrder, fileByteOrderIsSystemByteOrder);
 		buffer.order(fileByteOrder);
 
 		int emptyField = buffer.getInt(81);
@@ -183,7 +173,7 @@ public class JTReader {
 		);
 
 		// Print the file header data
-		LOGGER.info("FileHeaderRecord is: {}", fileHeaderRecord);
+		Logger.info("FileHeaderRecord is: {}", fileHeaderRecord);
 	}
 
 	private int getTOCOffset(MappedByteBuffer buffer, boolean version10OrUp, boolean nobodySeemsToImplementTheReference) {
@@ -222,18 +212,18 @@ public class JTReader {
 		    if (versionParts.length > 1) {
 		        float versionNumber = Float.parseFloat(versionParts[1]);
 		        if (versionNumber >= 10) {
-		            LOGGER.info("Version greater than or equal to 10. Using U64 for TOC Offset");
-		            LOGGER.info("Please keep in mind that we currently only support files up to {} MiBytes ({} Megabytes)", Integer.MAX_VALUE / (1024 * 1024), Integer.MAX_VALUE / 1_000_000);
+		            Logger.info("Version greater than or equal to 10. Using U64 for TOC Offset");
+		            Logger.info("Please keep in mind that we currently only support files up to {} MiBytes ({} Megabytes)", Integer.MAX_VALUE / (1024 * 1024), Integer.MAX_VALUE / 1_000_000);
 		            return true;
 		        } else {
-		            LOGGER.info("Version smaller than 10. Using I32 for TOC Offset");
+		            Logger.info("Version smaller than 10. Using I32 for TOC Offset");
 		            return false;
 		        }
 		    } else {
-		        LOGGER.warn("Version string does not contain a valid version number.");
+		        Logger.warn("Version string does not contain a valid version number.");
 		    }
 		} catch (NumberFormatException e) {
-		    LOGGER.error("Failed to parse version number from string: {}", version, e);
+		    Logger.error("Failed to parse version number from string: {}", version, e);
 		}
 		return false;
 	}
@@ -269,9 +259,9 @@ public class JTReader {
 			}
 		}
 		if (corrupted) {
-			LOGGER.warn("Final version characters deviate from definition. JTFile might be corrupted.");
+			Logger.warn("Final version characters deviate from definition. JTFile might be corrupted.");
 		} else {
-			LOGGER.info("Final version characters check out. JTFile is probably not corrupted");
+			Logger.info("Final version characters check out. JTFile is probably not corrupted");
 		}
 		return stringBuilder.toString();
 	}

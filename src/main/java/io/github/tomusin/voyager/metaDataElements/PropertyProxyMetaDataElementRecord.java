@@ -2,8 +2,7 @@ package io.github.tomusin.voyager.metaDataElements;
 
 import java.nio.ByteBuffer;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.DatePropertyValueRecord;
@@ -20,8 +19,6 @@ public record PropertyProxyMetaDataElementRecord(
 		DatePropertyValueRecord date,
 		int jtEndIndex
 		) implements BufferDeserializable {
-	
-	private static final Logger LOGGER = LoggerFactory.getLogger(PropertyProxyMetaDataElementRecord.class);
 
 	public static PropertyProxyMetaDataElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
 		int propertyValueType = 0;
@@ -56,7 +53,7 @@ public record PropertyProxyMetaDataElementRecord(
 				jtEndIndex = date.jtEndIndex();
 				break;
 			default:
-				LOGGER.error("PropertyValueType in PropertyProxyMetaDataElementRecord should be set to one of the following values: { 1, 2, 3, 4} as the mbString ({}) is not empty. BUt it has the valie: {}", mbString, propertyValueType);
+				Logger.error("PropertyValueType in PropertyProxyMetaDataElementRecord should be set to one of the following values: { 1, 2, 3, 4} as the mbString ({}) is not empty. BUt it has the valie: {}", mbString, propertyValueType);
 			}
 		}
 		return new PropertyProxyMetaDataElementRecord(versionNumber, mbString, propertyValueType, stringPropertyValue, intPropertyValue, floatPropertyValue, date, jtEndIndex);
