@@ -32,7 +32,7 @@ public record PartitionNodeElementRecord(
         int groupNodeStart = baseNodeDataRecord.jtEndIndex();
         GroupNodeDataRecord groupNodeDataRecord = ReadNodesFromBufferUtils.readGroupNodeData(groupNodeStart, buffer, baseNodeDataRecord);
         int partitionFlagsStart = groupNodeDataRecord.jtEndIndex();
-//        int partitionFlags = buffer.getInt(partitionFlagsStart); // Documentation wrong
+//      int partitionFlags = buffer.getInt(partitionFlagsStart); // Documentation wrong
         int partitionFlags = ReadFromBufferUtils.readUnsignedByte(buffer, partitionFlagsStart);
         int mbStringStart = partitionFlagsStart + 1;
         MbStringResult mbStringResult = ReadFromBufferUtils.readMbString(buffer, mbStringStart);

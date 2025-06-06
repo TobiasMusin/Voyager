@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.BiFunction;
 
+import io.github.tomusin.lodElements.TriStripSetShapeLODElementRecord;
 import io.github.tomusin.lsgElements.BaseNodeElementRecord;
 import io.github.tomusin.lsgElements.GroupNodeElementRecord;
 import io.github.tomusin.lsgElements.InstanceNodeElementRecord;
@@ -41,7 +42,9 @@ public enum NodeElementType {
 	STRING_ATOM_PROPERTY_ELEMENT("{10dd106e-2ac8-11d1-9b-6b-00-80-c7-bb-59-97}", StringPropertyAtomElementRecord::fromByteBuffer),
 	LATE_LOADED_PROPERTY_ATOM_ELEMENT("{e0b05be5-fbbd-11d1-a3-a7-00-aa-00-d1-09-54}", LateLoadedPropertyAtomElementRecord::fromByteBuffer),
 	// MetaData-Segment
-	PROPERTY_PROXY_META_DATA_ELEMENT("{ce357247-38fb-11d1-a5-06-00-60-97-bd-c6-e1}", PropertyProxyMetaDataElementRecord::fromByteBuffer);
+	PROPERTY_PROXY_META_DATA_ELEMENT("{ce357247-38fb-11d1-a5-06-00-60-97-bd-c6-e1}", PropertyProxyMetaDataElementRecord::fromByteBuffer),
+	// LOD0 Segment
+	TRI_STRIP_SET_SHAPE_LOD_ELEMENT("{10DD10AB-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", TriStripSetShapeLODElementRecord::fromByteBuffer);
 	                              
     private final String guid;
     private final BiFunction<ByteBuffer, Integer, BufferDeserializable> deserializer;

@@ -135,7 +135,7 @@
 								<buildArg>-H:+TrackPrimitiveValues</buildArg>
 			    				<buildArg>-H:+PrintAnalysisCallTree</buildArg>
 			    				<buildArg>-H:+UsePredicates</buildArg>
-			    				<buildArg>-O2</buildArg> <!--Valid optimization levels: Os, Ob, O0, O1, O2,	O3 -->
+			    				<buildArg>-O3</buildArg> <!--Valid optimization levels: Os, Ob, O0, O1, O2,	O3 -->
 			    				<buildArg>-H:+RemoveSaturatedTypeFlows</buildArg>
 								<buildArg>-H:+RemoveUnusedSymbols</buildArg>
 								<buildArg>-H:GenerateDebugInfo=0</buildArg>

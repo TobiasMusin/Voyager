@@ -18,6 +18,7 @@ import io.github.tomusin.voyager.fileRecords.TOCRecord;
 import io.github.tomusin.voyager.segments.DataSegmentType;
 import io.github.tomusin.voyager.segments.LSGDataSegment;
 import io.github.tomusin.voyager.segments.MetaDataSegment;
+import io.github.tomusin.voyager.segments.ShapeLOD0DataSegment;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public class JTReader {
@@ -97,6 +98,8 @@ public class JTReader {
 			LSGDataSegment lsgDataSegment = new LSGDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
 		} else if (segmentHeaderMap.get(segmentGUID).segmentType() == 4) {
 			MetaDataSegment metaDataSegment = new MetaDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);; 
+		} else if (segmentHeaderMap.get(segmentGUID).segmentType() == 7) {
+			ShapeLOD0DataSegment shapeLOD0DataSegment = new ShapeLOD0DataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);; 
 		}
 	}
 	
