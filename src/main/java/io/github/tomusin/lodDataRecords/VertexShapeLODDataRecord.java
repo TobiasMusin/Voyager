@@ -3,7 +3,9 @@ package io.github.tomusin.lodDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.datastructures.LogicalElementHeaderRecord;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
+import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
 // Page 90, Figure 85
 public record VertexShapeLODDataRecord(
@@ -20,7 +22,7 @@ public record VertexShapeLODDataRecord(
 		long vertexBindings = ReadFromBufferUtils.readUnsignedLong(buffer, baseShapeLODData.jtEndIndex() + 1);
 		TopoMeshTopologicallyCompressedLODDataRecord topoMeshTopologicallyCompressedLODDataRecord = null; // Replace with proper Record
 		TopoMeshCompressedLODDataRecord topoMeshCompressedLODDataRecord = null;
-		
+	
 		if (shapeIsTriStripSetShapeNodeElement) {
 			topoMeshTopologicallyCompressedLODDataRecord = TopoMeshTopologicallyCompressedLODDataRecord.fromByteBuffer(buffer, baseShapeLODData.jtEndIndex() + 9);
 		}

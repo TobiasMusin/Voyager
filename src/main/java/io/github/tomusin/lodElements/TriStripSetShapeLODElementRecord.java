@@ -3,7 +3,6 @@ package io.github.tomusin.lodElements;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.lodDataRecords.VertexShapeLODDataRecord;
-import io.github.tomusin.lodDataRecords.VertexShapeLODDataRecordv95;
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.LogicalElementHeaderRecord;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
