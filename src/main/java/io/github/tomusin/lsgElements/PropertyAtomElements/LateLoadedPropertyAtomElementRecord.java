@@ -3,6 +3,7 @@ package io.github.tomusin.lsgElements.PropertyAtomElements;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record LateLoadedPropertyAtomElementRecord(
@@ -14,7 +15,7 @@ public record LateLoadedPropertyAtomElementRecord(
 		int reserved
 		) implements BufferDeserializable {
 
-	public static LateLoadedPropertyAtomElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static LateLoadedPropertyAtomElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		BasePropertyAtomDataRecord basePropertyAtomData = BasePropertyAtomDataRecord.fromByteBuffer(buffer, startIndex);
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, basePropertyAtomData.jtEndIndex());
 		String GUID = ReadFromBufferUtils.getGUID(buffer, basePropertyAtomData.jtEndIndex() + 1);

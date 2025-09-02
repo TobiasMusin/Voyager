@@ -6,6 +6,7 @@ import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.DatePropertyValueRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils.MbStringResult;
 
@@ -20,7 +21,7 @@ public record PropertyProxyMetaDataElementRecord(
 		int jtEndIndex
 		) implements BufferDeserializable {
 
-	public static PropertyProxyMetaDataElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static PropertyProxyMetaDataElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		int propertyValueType = 0;
 		
 		String stringPropertyValue = null;

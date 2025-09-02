@@ -3,6 +3,8 @@ package io.github.tomusin.voyager.datastructures;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public record VecI32(int count, int[] valueArray, int jtEndIndex) {
 	
 	@Override
@@ -24,7 +26,7 @@ public record VecI32(int count, int[] valueArray, int jtEndIndex) {
         return "VecI32[count=" + count + ", valueArray=" + Arrays.toString(valueArray) + "]";
     }
     
-    public static VecI32 fromByteBuffer(ByteBuffer buffer, int startIndex) {
+    public static VecI32 fromByteBuffer(BitByteBuffer buffer, int startIndex) {
     	int count = buffer.getInt(startIndex);
     	int[] valueArray = new int[count];
     	for (int i = 0; i < count; i++) {

@@ -3,12 +3,13 @@ package io.github.tomusin.lsgDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
 public record VertexShapeDataRecord(BaseShapeDataRecord baseShapeDataRecord, int versionNumber, long vertexBinding) implements BufferDeserializable {
 	
-	public static VertexShapeDataRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static VertexShapeDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		BaseShapeDataRecord baseShapeDataRecord = ReadNodesFromBufferUtils.readBaseShapeData(startIndex, buffer);
 //		BaseShapeDataRecord baseShapeDataRecord = ReadNodesFromBufferUtils.readBaseShapeDataFromOlderVersionsOrShittyWriters(startIndex, buffer);
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, baseShapeDataRecord.jtEndIndex());

@@ -6,6 +6,7 @@ import io.github.tomusin.lsgDataRecords.BaseAttributeDataFieldsV2Record;
 import io.github.tomusin.lsgDataRecords.BaseAttributeDataRecord;
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.RGBARecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record MaterialAttributeElementRecord(
@@ -22,7 +23,7 @@ public record MaterialAttributeElementRecord(
 		BaseAttributeDataFieldsV2Record baseAttributeDataFieldsV2Record
 		) implements BufferDeserializable {
 	
-	public static MaterialAttributeElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static MaterialAttributeElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		BaseAttributeDataRecord baseAttributeDataRecord =  BaseAttributeDataRecord.fromByteBuffer(buffer, startIndex);
 		byte versionNumber = buffer.get(baseAttributeDataRecord.jtEndIndex());
 		int dataFlags = ReadFromBufferUtils.readUnsignedShort(buffer, baseAttributeDataRecord.jtEndIndex() + 1);

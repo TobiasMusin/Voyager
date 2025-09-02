@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.DatePropertyValueRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record DatePropertyAtomElementRecord(
@@ -12,7 +13,7 @@ public record DatePropertyAtomElementRecord(
 		DatePropertyValueRecord datePropertyValueRecord
 		) implements BufferDeserializable {
 
-	public static DatePropertyAtomElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static DatePropertyAtomElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		BasePropertyAtomDataRecord basePropertyAtomData = BasePropertyAtomDataRecord.fromByteBuffer(buffer, startIndex);
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, basePropertyAtomData.jtEndIndex());
 		DatePropertyValueRecord datePropertyValueRecord = DatePropertyValueRecord.fromBuffer(buffer, basePropertyAtomData.jtEndIndex() + 1);

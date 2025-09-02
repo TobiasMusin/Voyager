@@ -6,6 +6,7 @@ import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.VecU32;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record CompressedVertexCoordinateArrayRecord(
@@ -18,7 +19,7 @@ public record CompressedVertexCoordinateArrayRecord(
 		int jtEndIndex
 		) implements BufferDeserializable {
 	
-	public static CompressedVertexCoordinateArrayRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static CompressedVertexCoordinateArrayRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		int uniqueVertexCount = buffer.getInt(startIndex);
 		int numberComponents = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
 		PointQuantizerDataRecord pointQuantizerData = PointQuantizerDataRecord.fromByteBuffer(buffer, startIndex + 5);

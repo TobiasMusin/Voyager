@@ -19,6 +19,22 @@ import io.github.tomusin.voyager.datastructures.CoordF32;
 
 public class ReadFromBufferUtils {
 
+	public static String getGUID(BitByteBuffer buffer, int guidStartIndex) {
+	    int part1 = buffer.getInt(guidStartIndex);
+	    short part2 = buffer.getShort(guidStartIndex + 4);
+	    short part3 = buffer.getShort(guidStartIndex + 6);
+	    byte[] part4 = new byte[8];
+
+	    for (int i = 0; i < 8; i++) {
+	        part4[i] = buffer.get(guidStartIndex + 8 + i);
+	    }
+
+	    return String.format("{%08X-%04X-%04X-%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X}",
+	            part1, part2, part3,
+	            part4[0], part4[1], part4[2], part4[3],
+	            part4[4], part4[5], part4[6], part4[7]);
+	}
+	
 	public static String getGUID(ByteBuffer buffer, int guidStartIndex) {
 	    int part1 = buffer.getInt(guidStartIndex);
 	    short part2 = buffer.getShort(guidStartIndex + 4);
@@ -111,6 +127,14 @@ public class ReadFromBufferUtils {
     }
 	
 	//-----------------------------------
+	public static long readUnsignedInt(BitByteBuffer buffer, int startIndex) {
+	    // Read the int value from the specified start index
+	    int signedInt = buffer.getInt(startIndex);
+	    
+	    // Convert the signed int to an unsigned long
+	    return signedInt & 0xFFFFFFFFL;
+	}
+	
 	public static long readUnsignedInt(ByteBuffer buffer, int startIndex) {
 	    // Read the int value from the specified start index
 	    int signedInt = buffer.getInt(startIndex);
@@ -119,7 +143,15 @@ public class ReadFromBufferUtils {
 	    return signedInt & 0xFFFFFFFFL;
 	}
 	
-	public static int readUnsignedShort(ByteBuffer buffer, int startIndex) {
+	public static long readUnsignedIntFromBitIndex(BitByteBuffer buffer, int startIndex) {
+	    // Read the int value from the specified start index
+	    int signedInt = buffer.getIntAtBitPosition(startIndex);
+	    System.out.println(buffer.getInt(startIndex / 8));
+	    // Convert the signed int to an unsigned long
+	    return signedInt & 0xFFFFFFFFL;
+	}
+	
+	public static int readUnsignedShort(BitByteBuffer buffer, int startIndex) {
 	    // Read the int value from the specified start index
 	    int signedInt = buffer.getShort(startIndex);
 	    
@@ -135,9 +167,25 @@ public class ReadFromBufferUtils {
 	    System.out.println(hexString.toString());
 	}
 	
+	public static int readUnsignedByte(BitByteBuffer buffer, int startIndex) {
+		// Read the byte value from the specified start index
+		byte signedByte = buffer.get(startIndex);
+
+		// Convert the signed byte to an unsigned int
+		return signedByte & 0xFF;
+	}
+	
 	public static int readUnsignedByte(ByteBuffer buffer, int startIndex) {
 		// Read the byte value from the specified start index
 		byte signedByte = buffer.get(startIndex);
+
+		// Convert the signed byte to an unsigned int
+		return signedByte & 0xFF;
+	}
+	
+	public static int readUnsignedByteFromBitIndex(BitByteBuffer buffer, int startIndex) {
+		// Read the byte value from the specified start index
+		int signedByte = buffer.getByteAtBitPosition(startIndex);
 
 		// Convert the signed byte to an unsigned int
 		return signedByte & 0xFF;
@@ -244,6 +292,14 @@ public class ReadFromBufferUtils {
         }
     }
     
+	public static long readUnsignedLong(BitByteBuffer buffer, int startIndex) {
+        // Read the long value from the specified start index
+        long signedLong = buffer.getLong(startIndex);
+        
+        // Convert the signed long to an unsigned long
+        return signedLong & 0xFFFFFFFFFFFFFFFFL;
+    }
+	
 	public static long readUnsignedLong(ByteBuffer buffer, int startIndex) {
         // Read the long value from the specified start index
         long signedLong = buffer.getLong(startIndex);
@@ -254,7 +310,7 @@ public class ReadFromBufferUtils {
 	
 	public static record MbStringResult(String value, int nextIndex) {}
 
-    public static MbStringResult readMbString(ByteBuffer buffer, int startIndex) {
+    public static MbStringResult readMbString(BitByteBuffer buffer, int startIndex) {
         int numChars = buffer.getInt(startIndex); // 4 bytes
         int stringStartIndex = startIndex + 4;
         int byteLength = numChars * 2;
@@ -271,18 +327,18 @@ public class ReadFromBufferUtils {
         return new MbStringResult(decoded, nextIndex);
     }
 	
-	public static float readF32(ByteBuffer buffer, int startIndex) {
+	public static float readF32(BitByteBuffer buffer, int startIndex) {
         return buffer.getFloat(startIndex); // Absolute read = thread-safe
     }
 
-    public static CoordF32 readCoordF32(ByteBuffer buffer, int startIndex) {
+    public static CoordF32 readCoordF32(BitByteBuffer buffer, int startIndex) {
         float x = buffer.getFloat(startIndex);
         float y = buffer.getFloat(startIndex + 4);
         float z = buffer.getFloat(startIndex + 8);
         return new CoordF32(x, y, z);
     }
 
-    public static BBoxF32 readBBoxF32(ByteBuffer buffer, int startIndex) {
+    public static BBoxF32 readBBoxF32(BitByteBuffer buffer, int startIndex) {
         CoordF32 min = readCoordF32(buffer, startIndex);
         CoordF32 max = readCoordF32(buffer, startIndex + 12);
         return new BBoxF32(min, max);

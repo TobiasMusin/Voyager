@@ -31,6 +31,7 @@ import io.github.tomusin.voyager.datastructures.NodeElementType;
 import io.github.tomusin.voyager.datastructures.PropertyTableRecord;
 import io.github.tomusin.voyager.datastructures.TreeNode;
 import io.github.tomusin.voyager.fileRecords.SegmentHeaderRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
@@ -60,7 +61,7 @@ public class LSGDataSegment extends DataSegment{
 				byte[] decompressedLSGSegment = ReadFromBufferUtils.decompressLZMA2FromBuffer(buffer, segmentStartIndex + 16 + 4 + 4 + 4 + 4 + 1, compressedDataLength - 1, fileByteOrder);
 				long endTimeUntilDecompressed = System.nanoTime();
 				Logger.info("Time until decompressed: {}", (endTimeUntilDecompressed - startTime)/ 1_000_000);
-				ByteBuffer decompressedLSGSegmentBuffer = ByteBuffer.wrap(decompressedLSGSegment).order(fileByteOrder);
+				BitByteBuffer decompressedLSGSegmentBuffer = new BitByteBuffer(ByteBuffer.wrap(decompressedLSGSegment).order(fileByteOrder));
 				Map<Integer ,LogicalElementHeaderRecord> logicalElementHeaderRecordMap = new HashMap<>();
 				
 				int startIndex = 0;
@@ -147,7 +148,7 @@ public class LSGDataSegment extends DataSegment{
 		}
 	}
 	
-	private void attachAttributesToTreeNodes(ByteBuffer decompressedLSGSegmentBuffer,
+	private void attachAttributesToTreeNodes(BitByteBuffer decompressedLSGSegmentBuffer,
 			Map<Integer, LogicalElementHeaderRecord> logicalElementHeaderRecordMap,
 			Map<Integer, TreeNode> treeNodeMap, Map<LogicalElementHeaderRecord, BufferDeserializable> elementMap) {
 		for (LogicalElementHeaderRecord header : logicalElementHeaderRecordMap.values()) {
@@ -190,7 +191,7 @@ public class LSGDataSegment extends DataSegment{
 		}
 	}
 	
-	private void connectTreeHierarchy(ByteBuffer decompressedLSGSegmentBuffer,
+	private void connectTreeHierarchy(BitByteBuffer decompressedLSGSegmentBuffer,
 			Map<Integer, LogicalElementHeaderRecord> logicalElementHeaderRecordMap, Map<Integer, TreeNode> treeNodeMap,
 			Set<Integer> childObjectIDs, Map<LogicalElementHeaderRecord, BufferDeserializable> elementMap) {
 		for (LogicalElementHeaderRecord header : logicalElementHeaderRecordMap.values()) {

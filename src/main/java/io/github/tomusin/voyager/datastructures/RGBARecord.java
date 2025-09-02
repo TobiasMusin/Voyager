@@ -2,8 +2,10 @@ package io.github.tomusin.voyager.datastructures;
 
 import java.nio.ByteBuffer;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public record RGBARecord(float r, float g, float b, float a, int jtEndIndex) {
-	public static RGBARecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static RGBARecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		float r = buffer.getFloat(startIndex);
 		float g = buffer.getFloat(startIndex + 4);
 		float b = buffer.getFloat(startIndex + 8);

@@ -4,8 +4,10 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public record ElementPropertyTableRecord(Map<Integer, Integer> elementPropertiesMap, int jtEndIndex) {
-	public static ElementPropertyTableRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static ElementPropertyTableRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		Map<Integer, Integer> elementPropertiesMap = new HashMap<>();
 		int currentIndex = startIndex;
 		int keyPropertyAtomObjectID = buffer.getInt(currentIndex);

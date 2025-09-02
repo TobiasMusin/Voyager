@@ -27,7 +27,7 @@ public class JTReader {
 	
 	// Seems most writers ignore the U64 Segment offset and write I32 instead
 	// Also 9.5 seems to have some problems for me, maybe documentation changed? -> investigate and fix later
-	private static Set<String> writersThatWriteI32SegmentOffset = Set.of("Version 10.5 JT  DM 10.3.1.2", "Version 10.3 JT  DM 9.4.0.0", "Version 9.5 JT  DM 8.0.7.0");
+	private static Set<String> writersThatWriteI32SegmentOffset = Set.of("Version 10.5 JT  DM 10.3.1.2", "Version 10.3 JT  DM 9.4.0.0", "Version 9.5 JT  DM 8.0.7.0", "Version 10.5 JT  DM 10.6.0.3");
 	private String strippedVersionString;
 	private ByteOrder fileByteOrder;
 

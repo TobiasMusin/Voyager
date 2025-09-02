@@ -2,6 +2,8 @@ package io.github.tomusin.voyager.datastructures;
 
 import java.nio.ByteBuffer;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public record DatePropertyValueRecord(
 		short year,
 		short month,
@@ -11,7 +13,7 @@ public record DatePropertyValueRecord(
 		short second,
 		int jtEndIndex
 		) {
-	public static DatePropertyValueRecord fromBuffer(ByteBuffer buffer, int startIndex) {
+	public static DatePropertyValueRecord fromBuffer(BitByteBuffer buffer, int startIndex) {
 		short year = buffer.getShort(startIndex);
 		short month = buffer.getShort(startIndex + 2);
 		short day = buffer.getShort(startIndex + 4);

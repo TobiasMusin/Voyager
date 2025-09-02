@@ -3,6 +3,7 @@ package io.github.tomusin.lodDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record TopologicallyCompressedVertexRecordsRecord(
@@ -18,7 +19,7 @@ public record TopologicallyCompressedVertexRecordsRecord(
 		// CompressedAuxiliaryFields Array 
 		) implements BufferDeserializable {
 
-	public static TopologicallyCompressedVertexRecordsRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static TopologicallyCompressedVertexRecordsRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		long vertexBindings = ReadFromBufferUtils.readUnsignedLong(buffer, startIndex);
 		QuantizationParametersRecord quantizationParameters = QuantizationParametersRecord.fromByteBuffer(buffer, startIndex + 8);
 		int numberOfTopoligicalVertices = buffer.getInt(quantizationParameters.jtEndIndex());

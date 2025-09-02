@@ -3,6 +3,7 @@ package io.github.tomusin.lsgElements.PropertyAtomElements;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record IntegerPropertyAtomElementRecord(
@@ -11,7 +12,7 @@ public record IntegerPropertyAtomElementRecord(
 		int value
 		) implements BufferDeserializable {
 
-	public static IntegerPropertyAtomElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static IntegerPropertyAtomElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		BasePropertyAtomDataRecord basePropertyAtomData = BasePropertyAtomDataRecord.fromByteBuffer(buffer, startIndex);
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, basePropertyAtomData.jtEndIndex());
 		int value = buffer.getInt(basePropertyAtomData.jtEndIndex() + 1);

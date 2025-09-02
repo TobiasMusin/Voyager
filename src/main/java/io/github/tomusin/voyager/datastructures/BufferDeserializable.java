@@ -2,11 +2,13 @@ package io.github.tomusin.voyager.datastructures;
 
 import java.nio.ByteBuffer;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public interface BufferDeserializable {
     /**
      * Always pass the buffer and the offset
      */
-    static BufferDeserializable fromByteBuffer(ByteBuffer buffer, int startIndex) {
+    static BufferDeserializable fromByteBuffer(BitByteBuffer buffer, int startIndex) {
         throw new UnsupportedOperationException("Must be overridden");
     }
 

@@ -22,6 +22,7 @@ import io.github.tomusin.lsgElements.PropertyAtomElements.IntegerPropertyAtomEle
 import io.github.tomusin.lsgElements.PropertyAtomElements.LateLoadedPropertyAtomElementRecord;
 import io.github.tomusin.lsgElements.PropertyAtomElements.StringPropertyAtomElementRecord;
 import io.github.tomusin.voyager.metaDataElements.PropertyProxyMetaDataElementRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 
 public enum NodeElementType {
 	PARTITION_NODE("{10dd103e-2ac8-11d1-9b-6b-00-80-c7-bb-59-97}", PartitionNodeElementRecord::fromByteBuffer),
@@ -47,14 +48,14 @@ public enum NodeElementType {
 	TRI_STRIP_SET_SHAPE_LOD_ELEMENT("{10DD10AB-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", TriStripSetShapeLODElementRecord::fromByteBuffer);
 	                              
     private final String guid;
-    private final BiFunction<ByteBuffer, Integer, BufferDeserializable> deserializer;
+    private final BiFunction<BitByteBuffer, Integer, BufferDeserializable> deserializer;
 
-    NodeElementType(String guid, BiFunction<ByteBuffer, Integer, BufferDeserializable> deserializer) {
+    NodeElementType(String guid, BiFunction<BitByteBuffer, Integer, BufferDeserializable> deserializer) {
         this.guid = guid.toLowerCase();
         this.deserializer = deserializer;
     }
 
-    public BufferDeserializable deserialize(ByteBuffer buffer, int startIndex) {
+    public BufferDeserializable deserialize(BitByteBuffer buffer, int startIndex) {
         return deserializer.apply(buffer, startIndex);
     }
 

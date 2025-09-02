@@ -3,6 +3,7 @@ package io.github.tomusin.lodDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 
 public record PointQuantizerDataRecord(
 		UniformQuantizerDataRecord xUniformQuantizerData,
@@ -10,7 +11,7 @@ public record PointQuantizerDataRecord(
 		UniformQuantizerDataRecord zUniformQuantizerData
 		) implements BufferDeserializable {
 
-	public static PointQuantizerDataRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static PointQuantizerDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		UniformQuantizerDataRecord xUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'x');
 		UniformQuantizerDataRecord yUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'y');
 		UniformQuantizerDataRecord zUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'z');

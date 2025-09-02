@@ -17,7 +17,7 @@ import io.github.tomusin.voyager.datastructures.VertexCountRangeRecord;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils.MbStringResult;
 
 public class ReadNodesFromBufferUtils {
-	public static PartitionNodeElementRecord readPartitionNode(ByteBuffer buffer, int startIndex) {
+	public static PartitionNodeElementRecord readPartitionNode(BitByteBuffer buffer, int startIndex) {
 	    // Read base node data
 	    BaseNodeDataRecord baseNodeDataRecord = readBaseNodeData(startIndex, buffer);
 
@@ -71,7 +71,7 @@ public class ReadNodesFromBufferUtils {
 	    );
 	}
 	
-	public static BaseShapeDataRecord readBaseShapeDataFromOlderVersionsOrShittyWriters(int startIndex, ByteBuffer buffer) {
+	public static BaseShapeDataRecord readBaseShapeDataFromOlderVersionsOrShittyWriters(int startIndex, BitByteBuffer buffer) {
 		BaseNodeDataRecord baseNodeDataRecord = readBaseNodeData(startIndex, buffer);
 //		int versionNumber = buffer.getShort(baseNodeDataRecord.jtEndIndex());
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer,  baseNodeDataRecord.jtEndIndex());
@@ -86,7 +86,7 @@ public class ReadNodesFromBufferUtils {
 		return new BaseShapeDataRecord(baseNodeDataRecord, versionNumber, bboxF32, area, vertexCountRangeRecord, nodeCountRangeRecord, polygonCountRangeRecord, size, compressionLevel, polygonCountRangeRecord.jtEndIndex() + 8);
 	}
 	
-	public static BaseShapeDataRecord readBaseShapeData(int startIndex, ByteBuffer buffer) {
+	public static BaseShapeDataRecord readBaseShapeData(int startIndex, BitByteBuffer buffer) {
 		BaseNodeDataRecord baseNodeDataRecord = readBaseNodeData(startIndex , buffer);
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer,  baseNodeDataRecord.jtEndIndex());
 		BBoxF32 bboxF32 = ReadFromBufferUtils.readBBoxF32(buffer, baseNodeDataRecord.jtEndIndex() + 1);
@@ -99,7 +99,7 @@ public class ReadNodesFromBufferUtils {
 		return new BaseShapeDataRecord(baseNodeDataRecord, versionNumber, bboxF32, area, vertexCountRangeRecord, nodeCountRangeRecord, polygonCountRangeRecord, size, compressionLevel, polygonCountRangeRecord.jtEndIndex() + 8);
 	}
 	
-	public static BaseNodeDataRecord readBaseNodeData(int startIndex, ByteBuffer buffer) {
+	public static BaseNodeDataRecord readBaseNodeData(int startIndex, BitByteBuffer buffer) {
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex);
 		long nodeFlags = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + 1);
 		int attributeAmount = buffer.getInt(startIndex + 1 + 4);
@@ -110,13 +110,13 @@ public class ReadNodesFromBufferUtils {
 		return new BaseNodeDataRecord(versionNumber, nodeFlags, attributeAmount, attributeIDSet, startIndex, startIndex + 1 + 4 + 4 + attributeAmount * 4);
 	}
 	
-	public static BasePropertyAtomDataRecord readBasePropertyAtomData(int startIndex, ByteBuffer buffer) {
+	public static BasePropertyAtomDataRecord readBasePropertyAtomData(int startIndex, BitByteBuffer buffer) {
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex);
 		long stateFlags = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + 1);
 		return new BasePropertyAtomDataRecord(versionNumber, stateFlags, startIndex + 5);
 	}
 	
-	public static GroupNodeDataRecord readGroupNodeData(int startIndex, ByteBuffer buffer, BaseNodeDataRecord baseNodeData) {
+	public static GroupNodeDataRecord readGroupNodeData(int startIndex, BitByteBuffer buffer, BaseNodeDataRecord baseNodeData) {
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex);
 		int childCount = buffer.getInt(startIndex + 1);
 		Set<Integer> childIDSet = new HashSet<>();
@@ -128,6 +128,18 @@ public class ReadNodesFromBufferUtils {
 		}
 		GroupNodeDataRecord groupNodeDataRecord = new GroupNodeDataRecord(baseNodeData, versionNumber, childCount, childIDSet, startIndex, (startIndex + 1 + 4 + childCount * 4));
 		return groupNodeDataRecord;
+	}
+	
+	public static LogicalElementHeaderRecord readLogicalElementHeader(BitByteBuffer buffer, int startIndex) {
+	    int elementLength = buffer.getInt(startIndex);
+	    String objectTypeID = ReadFromBufferUtils.getGUID(buffer, startIndex + 4);
+
+	    byte objectBaseTypeByte = buffer.get(startIndex + 16 + 4);
+	    int objectBaseType = Byte.toUnsignedInt(objectBaseTypeByte);
+
+	    int objectID = buffer.getInt(startIndex + 16 + 4 + 1);
+
+	    return new LogicalElementHeaderRecord(elementLength, objectTypeID, objectBaseType, objectID, startIndex + 16 + 4 + 1 + 4);
 	}
 	
 	public static LogicalElementHeaderRecord readLogicalElementHeader(ByteBuffer buffer, int startIndex) {

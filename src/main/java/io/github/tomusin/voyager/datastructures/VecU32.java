@@ -3,6 +3,7 @@ package io.github.tomusin.voyager.datastructures;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record VecU32(int count, long[] valueArray, int jtEndIndex) {
@@ -25,7 +26,7 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
         return "VecU32[count=" + count + ", valueArray=" + Arrays.toString(valueArray) + "]";
     }
     
-    public static VecU32 fromByteBuffer(ByteBuffer buffer, int startIndex) {
+    public static VecU32 fromByteBuffer(BitByteBuffer buffer, int startIndex) {
     	int count = buffer.getInt(startIndex);
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
@@ -34,7 +35,7 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
     	return new VecU32(count, valueArray, startIndex + 1 + count * 4);
     }
     
-    public static VecU32 fromByteBuffer(ByteBuffer buffer, int startIndex, int count) {
+    public static VecU32 fromByteBuffer(BitByteBuffer buffer, int startIndex, int count) {
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
     		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + i * 4);

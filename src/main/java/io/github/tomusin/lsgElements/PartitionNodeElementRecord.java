@@ -6,6 +6,7 @@ import io.github.tomusin.lsgDataRecords.BaseNodeDataRecord;
 import io.github.tomusin.lsgDataRecords.GroupNodeDataRecord;
 import io.github.tomusin.voyager.datastructures.BBoxF32;
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils.MbStringResult;
@@ -26,7 +27,7 @@ public record PartitionNodeElementRecord(
 	    int jtEndIndex
 	) implements BufferDeserializable {
 	
-    public static PartitionNodeElementRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+    public static PartitionNodeElementRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
         // all the logic you already have
         BaseNodeDataRecord baseNodeDataRecord = ReadNodesFromBufferUtils.readBaseNodeData(startIndex, buffer);
         int groupNodeStart = baseNodeDataRecord.jtEndIndex();

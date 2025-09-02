@@ -4,9 +4,11 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.github.tomusin.voyager.utils.BitByteBuffer;
+
 public record PropertyTableRecord(short versionNumber, int elementPropertyTableCount, Map<Integer, ElementPropertyTableRecord> elementPropertyTableRecordMap) {
 
-	public static PropertyTableRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static PropertyTableRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		short versionNumber = buffer.getShort(startIndex);
 		int elementPropertyTableCount = buffer.getInt(startIndex + 2);
 		Map<Integer, ElementPropertyTableRecord> elementPropertyTableRecordMap = new HashMap<>();

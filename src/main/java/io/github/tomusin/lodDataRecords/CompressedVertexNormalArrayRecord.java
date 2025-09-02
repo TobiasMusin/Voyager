@@ -6,6 +6,7 @@ import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.VecU32;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record CompressedVertexNormalArrayRecord(
@@ -18,7 +19,7 @@ public record CompressedVertexNormalArrayRecord(
 		int jtEndIndex
 		) implements BufferDeserializable {
 
-	public static CompressedVertexNormalArrayRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static CompressedVertexNormalArrayRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		int normalCount = buffer.getInt(startIndex);
 		int numberComponents = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
 		int quantizationBits = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 5);

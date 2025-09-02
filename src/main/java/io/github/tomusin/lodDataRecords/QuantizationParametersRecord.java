@@ -3,6 +3,7 @@ package io.github.tomusin.lodDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record QuantizationParametersRecord(
@@ -13,7 +14,7 @@ public record QuantizationParametersRecord(
 		int jtEndIndex
 		) implements BufferDeserializable {
 
-	public static QuantizationParametersRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+	public static QuantizationParametersRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		int bitsPerVertex = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 1);
 		int normalBitsFactor = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 2);
 		int bitsPerTextureCoord = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 3);

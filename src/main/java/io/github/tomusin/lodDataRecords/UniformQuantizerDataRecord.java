@@ -3,6 +3,7 @@ package io.github.tomusin.lodDataRecords;
 import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record UniformQuantizerDataRecord(
@@ -13,7 +14,7 @@ public record UniformQuantizerDataRecord(
 		int jtEndIndex
 		) implements BufferDeserializable {
 	
-	public static UniformQuantizerDataRecord fromByteBuffer(ByteBuffer buffer, int startIndex, char type) {
+	public static UniformQuantizerDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex, char type) {
 		float min = buffer.getFloat(startIndex);
 		float max = buffer.getFloat(startIndex + 4);
 		int numberOfBits = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 8);

@@ -14,6 +14,7 @@ import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.LogicalElementHeaderRecord;
 import io.github.tomusin.voyager.datastructures.NodeElementType;
 import io.github.tomusin.voyager.fileRecords.SegmentHeaderRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
@@ -60,7 +61,7 @@ public class ShapeLOD0DataSegment  extends DataSegment  {
 				if (validGUIDS.contains(logicalElementHeaderRecord.objectTypeID().toLowerCase())) {
 					NodeElementType.fromGuid(logicalElementHeaderRecord.objectTypeID())
 							.ifPresentOrElse(nodeElementType -> {
-								BufferDeserializable obj = nodeElementType.deserialize(buffer,
+								BufferDeserializable obj = nodeElementType.deserialize(new BitByteBuffer(buffer),
 										logicalElementHeaderRecord.jtEndIndex());
 								Logger.info("Deserialized object is: {}", obj);
 							}, () -> Logger.warn("Unknown objectTypeID: {}",

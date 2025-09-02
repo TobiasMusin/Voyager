@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 public record BaseNodeDataRecord(
@@ -16,7 +17,7 @@ public record BaseNodeDataRecord(
 	    int jtEndIndex
 	) implements BufferDeserializable {
 
-    public static BaseNodeDataRecord fromByteBuffer(ByteBuffer buffer, int startIndex) {
+    public static BaseNodeDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
         int attributeAmount = buffer.getInt(startIndex + 1 + 4);
         Set<Integer> attributeIDSet = new HashSet<>();
         for (int i = 0; i < attributeAmount; i++) {

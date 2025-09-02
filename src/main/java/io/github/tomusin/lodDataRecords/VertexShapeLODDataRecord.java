@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.LogicalElementHeaderRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
@@ -16,7 +17,7 @@ public record VertexShapeLODDataRecord(
 		TopoMeshTopologicallyCompressedLODDataRecord topoMeshTopologicallyCompressedLODDataRecord
 		) implements BufferDeserializable {
 
-	public static VertexShapeLODDataRecord fromByteBuffer(ByteBuffer buffer, int startIndex, boolean shapeIsTriStripSetShapeNodeElement) {
+	public static VertexShapeLODDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex, boolean shapeIsTriStripSetShapeNodeElement) {
 		BaseShapeLODDataRecord baseShapeLODData = BaseShapeLODDataRecord.fromByteBuffer(buffer, startIndex);
 		int versionNumber = buffer.get(baseShapeLODData.jtEndIndex());
 		long vertexBindings = ReadFromBufferUtils.readUnsignedLong(buffer, baseShapeLODData.jtEndIndex() + 1);
@@ -25,6 +26,8 @@ public record VertexShapeLODDataRecord(
 	
 		if (shapeIsTriStripSetShapeNodeElement) {
 			topoMeshTopologicallyCompressedLODDataRecord = TopoMeshTopologicallyCompressedLODDataRecord.fromByteBuffer(buffer, baseShapeLODData.jtEndIndex() + 9);
+		} else {
+			topoMeshCompressedLODDataRecord = TopoMeshCompressedLODDataRecord.fromByteBuffer(buffer, baseShapeLODData.jtEndIndex() + 9);
 		}
 		
 		return new VertexShapeLODDataRecord(baseShapeLODData, versionNumber, vertexBindings, topoMeshCompressedLODDataRecord, topoMeshTopologicallyCompressedLODDataRecord);

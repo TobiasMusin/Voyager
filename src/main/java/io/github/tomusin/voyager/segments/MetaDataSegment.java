@@ -14,6 +14,7 @@ import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.LogicalElementHeaderRecord;
 import io.github.tomusin.voyager.datastructures.NodeElementType;
 import io.github.tomusin.voyager.fileRecords.SegmentHeaderRecord;
+import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 import io.github.tomusin.voyager.utils.ReadNodesFromBufferUtils;
 
@@ -37,7 +38,7 @@ public class MetaDataSegment extends DataSegment {
 				
 				byte[] decompressedLSGSegment = ReadFromBufferUtils.decompressLZMA2FromBuffer(buffer, segmentStartIndex + 16 + 4 + 4 + 4 + 4 + 1, compressedDataLength - 1, fileByteOrder);
 
-				ByteBuffer decompressedLSGSegmentBuffer = ByteBuffer.wrap(decompressedLSGSegment).order(fileByteOrder);
+				BitByteBuffer decompressedLSGSegmentBuffer = new BitByteBuffer(ByteBuffer.wrap(decompressedLSGSegment).order(fileByteOrder));
 				Map<Integer ,LogicalElementHeaderRecord> logicalElementHeaderRecordMap = new HashMap<>();
 				
 				int startIndex = 0;
