@@ -15,8 +15,16 @@ public record TopoMeshTopologicallyCompressedLODDataRecord(
 
 	public static TopoMeshTopologicallyCompressedLODDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		TopoMeshLODDataRecord topoMeshLODDataRecord = TopoMeshLODDataRecord.fromByteBuffer(buffer, startIndex);
-		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, topoMeshLODDataRecord.jtEndIndex());
-		TopologicallyCompressedRepDataRecord topologicallyCompressedRepDataRecord = TopologicallyCompressedRepDataRecord.fromByteBuffer(buffer, topoMeshLODDataRecord.jtEndIndex() + 1);
+		int versionByteOffset = topoMeshLODDataRecord.jtEndIndex();
+		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, versionByteOffset);
+		
+		// TopologicallyCompressedRepDataRecord.fromByteBuffer expects BYTES (which it will convert to BITS internally with *8)
+		// versionNumber occupies 1 byte at versionByteOffset
+		// So TopoCmpRepData starts at the next byte: versionByteOffset + 1
+		int topoCompRepDataByteOffset = versionByteOffset + 1;
+		
+		TopologicallyCompressedRepDataRecord topologicallyCompressedRepDataRecord = 
+			TopologicallyCompressedRepDataRecord.fromByteBuffer(buffer, topoCompRepDataByteOffset);
 		return new TopoMeshTopologicallyCompressedLODDataRecord(topoMeshLODDataRecord, versionNumber, topologicallyCompressedRepDataRecord);
 	}
 	

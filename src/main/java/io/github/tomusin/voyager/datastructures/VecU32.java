@@ -27,12 +27,13 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
     }
     
     public static VecU32 fromByteBuffer(BitByteBuffer buffer, int startIndex) {
-    	int count = buffer.getInt(startIndex);
+    	// startIndex is now a BIT OFFSET (not byte offset) to handle non-aligned CDP data
+    	int count = buffer.getIntAtBitPosition(startIndex);
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
-    		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + 1 + i * 4);
+    		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, (startIndex + 32 + i * 32) / 8);
     	}
-    	return new VecU32(count, valueArray, startIndex + 1 + count * 4);
+    	return new VecU32(count, valueArray, startIndex + 32 + count * 32);
     }
     
     public static VecU32 fromByteBuffer(BitByteBuffer buffer, int startIndex, int count) {
