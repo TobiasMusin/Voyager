@@ -1,12 +1,7 @@
 package io.github.tomusin.lodDataRecords;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.tinylog.Logger;
 
@@ -14,8 +9,6 @@ import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.VecI32;
 import io.github.tomusin.voyager.datastructures.VecU32;
 import io.github.tomusin.voyager.utils.BitByteBuffer;
-import io.github.tomusin.voyager.utils.BitReader;
-import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
 // Page 97, Figure 92
 public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 vertexValences, VecI32 vertexGroups,
@@ -96,10 +89,13 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 * Scans forward from startIndex looking for a valid CDP header.
 	 * Useful for finding the actual start of CDP data if offset is off.
 	 */
-	private static int findValidCDPOffset(BitByteBuffer buffer, int startIndex, int maxScanBytes) {
+	private static int findValidCDPOffset(BitByteBuffer buffer, int startIndex, int maxScanBytes, boolean onlyForward) {
 		Logger.info("Scanning for valid CDP header starting at byte offset {}", startIndex);
 		
 		int scanStart = Math.max(0, startIndex - maxScanBytes);
+		if (onlyForward) {
+			scanStart = startIndex;  // Only scan forward, not backward
+		}
 		int scanEnd = Math.min(buffer.capacity() - 9, startIndex + maxScanBytes);
 		
 		Logger.info("  Scan range: {} to {} ({} bytes)", scanStart, scanEnd, scanEnd - scanStart);
@@ -139,163 +135,317 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		return startIndex;  // Fall back to original offset
 	}
 
+	/**
+	 * Finds the next plausible CDP header at or after {@code startIndex}.
+	 * Used to re-sync offsets after arithmetic packets that may carry additional
+	 * serialized structures after code-text words.
+	 */
+	private static int findNextLikelyCDPOffset(BitByteBuffer buffer, int startIndex, int maxScanBytes) {
+		int scanStart = Math.max(0, startIndex);
+		int scanEnd = Math.min(buffer.capacity() - 9, startIndex + maxScanBytes);
+
+		for (int offset = scanStart; offset <= scanEnd; offset++) {
+			int valueCount = buffer.getInt(offset);
+			int codecType = buffer.get(offset + 4) & 0xFF;
+			if (codecType < 0 || codecType > 5) {
+				continue;
+			}
+
+			if (valueCount < 0 || valueCount > 1_000_000) {
+				continue;
+			}
+
+			if (codecType == 4) {
+				// Chopper has at least 6-byte header, 11 when chopBits != 0.
+				if (offset + 6 <= buffer.capacity()) {
+					int chopBits = buffer.get(offset + 5) & 0xFF;
+					if (chopBits == 0 || offset + 11 <= buffer.capacity()) {
+						return offset;
+					}
+				}
+				continue;
+			}
+
+			int codeTextLengthBits = buffer.getInt(offset + 5);
+			if (codeTextLengthBits < 0 || codeTextLengthBits > buffer.capacity() * 8) {
+				continue;
+			}
+
+			int codeTextWordBytes = ((codeTextLengthBits + 31) / 32) * 4;
+			int end = offset + 9 + codeTextWordBytes;
+			if (end <= buffer.capacity()) {
+				return offset;
+			}
+		}
+
+		return startIndex;
+	}
+
 	private static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex) {
+		return readInt32CDP(buffer, startIndex, 0, false);
+	}
+	
+	private static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex, int recursionDepth, boolean isOobCall) {
+		// Prevent infinite recursion from offset scanning
+		if (recursionDepth > 8) {
+			Logger.error("readInt32CDP: Max recursion depth (8) exceeded at offset {}", startIndex);
+			return new VecI32(0, new int[0], startIndex);
+		}
 		// ========== CDP FORMAT (Byte-aligned) ==========
-		// startIndex is in BYTES (must be byte-aligned)
-		// CDP structure:
-		// Bytes 0-3:   valueCount (I32)
-		// Bytes 4-4:   codecType (U8)
-		// Bytes 5-8:   codeTextLength (I32)
-		// Bytes 9+:    Encoded data
+		// Different codecs have DIFFERENT header structures!
+		// 
+		// Standard Format (Types 0, 1, 3):
+		//   Bytes 0-3:   valueCount (I32)
+		//   Byte 4:      codecType (U8)
+		//   Bytes 5-8:   codeTextLength (I32)
+		//   Bytes 9+:    Encoded data
+		//
+		// Chopper Format (Type 4):
+		//   Bytes 0-3:   valueCount (I32)
+		//   Byte 4:      codecType (U8) = 4
+		//   Byte 5:      chopBits (U8)
+		//   Bytes 6-9:   valueBias (I32)
+		//   Byte 10:     valueSpanBits (U8)
+		//   Bytes 11+:   Int32CDP (Chopped MSB Data)
+		//   Then:        Int32CDP (Chopped LSB Data)
 		
 		Logger.info("readInt32CDP called with startIndex={} bytes", startIndex);
 		Logger.info("  Buffer capacity: {} bytes", buffer.capacity());
 		
-		// Bounds check
-		if (startIndex < 0 || startIndex + 9 > buffer.capacity()) {
+		// Bounds check for minimum header (always at least 5 bytes)
+		if (startIndex < 0 || startIndex + 5 > buffer.capacity()) {
 			Logger.error("readInt32CDP: startIndex {} is out of bounds (buffer capacity {})", 
 			            startIndex, buffer.capacity());
 			return new VecI32(0, new int[0], startIndex);
 		}
 		
-		// ========== HEADER PARSING (byte-aligned) ==========
+		// ========== BASIC HEADER PARSING (byte-aligned) ==========
 		// Bytes 0-3: Count of decoded values (signed 32-bit)
 		int valueCount = buffer.getInt(startIndex);
-		
-		// Bytes 4: CODEC type (unsigned 8-bit)
+		// Byte 4: CODEC type (unsigned 8-bit)
 		int codecType = buffer.get(startIndex + 4) & 0xFF;
+
+		if (valueCount == 0 && codecType == 4) {
+			Logger.info("  Empty Chopper CDP header at byte {}", startIndex);
+
+			// Chopper can legally appear with zero values and still carry chopper metadata.
+			if (startIndex + 6 > buffer.capacity()) {
+				return new VecI32(0, new int[0], startIndex + 5);
+			}
+			int chopBits = buffer.get(startIndex + 5) & 0xFF;
+			if (chopBits == 0) {
+				// C++ behavior: recurse immediately after chopBits when there is no chopped payload.
+				return readInt32CDP(buffer, startIndex + 6, recursionDepth + 1, false);
+			}
+			if (startIndex + 11 > buffer.capacity()) {
+				return new VecI32(0, new int[0], startIndex + 5);
+			}
+			// Parse nested MSB/LSB CDPs only to advance offset correctly.
+			VecI32 msbData = readInt32CDP(buffer, startIndex + 11, recursionDepth + 1, false);
+			VecI32 lsbData = readInt32CDP(buffer, msbData.jtEndIndex(), recursionDepth + 1, false);
+			return new VecI32(0, new int[0], lsbData.jtEndIndex());
+		}
 		
-		// Bytes 5-8: Length of encoded data in bits (signed 32-bit)
-		int codeTextLengthBits = buffer.getInt(startIndex + 5);
+		if (valueCount == 0) {
+			// When valueCount is 0, only the 4-byte count field is present (no codecType or further data)
+			Logger.info("  Empty CDP at byte {}, advancing 4 bytes", startIndex);
+			return new VecI32(0, new int[0], startIndex + 4);
+		}
 		
-		Logger.info("CDP Header parsing at byte offset {}:", startIndex);
-		Logger.info("  Raw bytes: 0x{:02X}{:02X}{:02X}{:02X} 0x{:02X} 0x{:02X}{:02X}{:02X}{:02X}", 
-		           buffer.get(startIndex) & 0xFF,
-		           buffer.get(startIndex + 1) & 0xFF,
-		           buffer.get(startIndex + 2) & 0xFF,
-		           buffer.get(startIndex + 3) & 0xFF,
-		           buffer.get(startIndex + 4) & 0xFF,
-		           buffer.get(startIndex + 5) & 0xFF,
-		           buffer.get(startIndex + 6) & 0xFF,
-		           buffer.get(startIndex + 7) & 0xFF,
-		           buffer.get(startIndex + 8) & 0xFF);
-		Logger.info("  valueCount={}, codecType={}, codeTextLengthBits={}", 
-		           valueCount, codecType, codeTextLengthBits);
+		// Bounds check for standard header (9 bytes minimum for non-Chopper)
+		if (codecType != 4 && startIndex + 9 > buffer.capacity()) {
+			Logger.error("readInt32CDP: startIndex {} needs 9 bytes but only {} available", 
+			            startIndex, buffer.capacity() - startIndex);
+			return new VecI32(0, new int[0], startIndex);
+		}
 		
-		// ========== VALIDATION & DEBUGGING ==========
+		// Bounds check for Chopper header (11 bytes minimum)
+		if (codecType == 4 && startIndex + 11 > buffer.capacity()) {
+			Logger.error("readInt32CDP: Chopper codec at {} needs 11 bytes but only {} available", 
+			            startIndex, buffer.capacity() - startIndex);
+			return new VecI32(0, new int[0], startIndex);
+		}
+		
+		// Codec-specific header parsing
+		int codeTextLengthBits = 0;
+		int endByte = startIndex + 9;  // Default for standard codecs
+		
+		if (codecType == 4) {
+			// ========== CHOPPER CODEC HEADER ==========
+			
+			int chopBits = buffer.get(startIndex + 5) & 0xFF;
+			int valueBias = buffer.getInt(startIndex + 6);
+			int valueSpanBits = buffer.get(startIndex + 10) & 0xFF;
+			
+			// For Chopper with data, we need to read the two embedded Int32CDP blocks
+			// First Int32CDP (Chopped MSB Data) starts at byte 11
+			VecI32 msbData = readInt32CDP(buffer, startIndex + 11, recursionDepth + 1, false);
+			int lsbStartByte = msbData.jtEndIndex();
+			
+			// Second Int32CDP (Chopped LSB Data) starts after MSB data
+			VecI32 lsbData = readInt32CDP(buffer, lsbStartByte, recursionDepth + 1, false);
+			int chopperEndByte = lsbData.jtEndIndex();
+			
+			// Merge the two data sets (MSB and LSB)
+			// For now, just use MSB data as placeholder
+			int[] mergedData = new int[valueCount];
+			System.arraycopy(msbData.valueArray(), 0, mergedData, 0, Math.min(msbData.valueArray().length, valueCount));
+			
+			Logger.info("  Chopper: MSB data ends at byte {}, LSB data ends at byte {}", lsbStartByte, chopperEndByte);
+			
+			return new VecI32(valueCount, mergedData, chopperEndByte);
+		} else {
+			// ========== STANDARD HEADER (Types 0, 1, 3) ==========
+			// Bytes 5-8: Length of encoded data in bits (signed 32-bit)
+			codeTextLengthBits = buffer.getInt(startIndex + 5);
+			
+			// Capture raw bytes for detailed logging
+			byte b0 = buffer.get(startIndex);
+			byte b1 = buffer.get(startIndex + 1);
+			byte b2 = buffer.get(startIndex + 2);
+			byte b3 = buffer.get(startIndex + 3);
+			byte b4 = buffer.get(startIndex + 4);
+			byte b5 = buffer.get(startIndex + 5);
+			byte b6 = buffer.get(startIndex + 6);
+			byte b7 = buffer.get(startIndex + 7);
+			byte b8 = buffer.get(startIndex + 8);
+			
+			Logger.info("CDP Header parsing at byte offset {}:", startIndex);
+			Logger.info("  Raw bytes (decimal): {} {} {} {} | {} | {} {} {} {}", 
+			           b0 & 0xFF, b1 & 0xFF, b2 & 0xFF, b3 & 0xFF, b4 & 0xFF,
+			           b5 & 0xFF, b6 & 0xFF, b7 & 0xFF, b8 & 0xFF);
+			Logger.info("  Raw bytes (hex): 0x{:02X}{:02X}{:02X}{:02X} 0x{:02X} 0x{:02X}{:02X}{:02X}{:02X}", 
+			           b0 & 0xFF, b1 & 0xFF, b2 & 0xFF, b3 & 0xFF, b4 & 0xFF,
+			           b5 & 0xFF, b6 & 0xFF, b7 & 0xFF, b8 & 0xFF);
+			Logger.info("  Parsed values: valueCount={}, codecType={}, codeTextLengthBits={}", 
+			           valueCount, codecType, codeTextLengthBits);
+			
+			int codeTextWordBytes = ((codeTextLengthBits + 31) / 32) * 4;
+			endByte = startIndex + 9 + codeTextWordBytes;
+		}
+		
 		// Check for unrealistic code text length (common indicator of wrong offset)
 		if (codeTextLengthBits > buffer.capacity() * 8) {
-			Logger.error("CDP VALIDATION ERROR at byte offset {}", startIndex);
-			Logger.error("  codeTextLengthBits {} exceeds buffer capacity {} bits", 
-			            codeTextLengthBits, buffer.capacity() * 8);
-			Logger.warn("  Attempting to find valid CDP offset with EXTENDED SCAN...");
-			int validOffset = findValidCDPOffset(buffer, startIndex, 50);  // Scan ±250 bytes
-			if (validOffset != startIndex) {
-				Logger.warn("  Retrying with offset {}", validOffset);
-				return readInt32CDP(buffer, validOffset);  // Recursive call with corrected offset
-			}
+			Logger.error("CDP VALIDATION ERROR at byte offset {}: codeTextLengthBits {} exceeds buffer capacity {} bits", 
+			            startIndex, codeTextLengthBits, buffer.capacity() * 8);
 			return new VecI32(0, new int[0], startIndex + 9);
 		}
-		
+			
 		// Check for NULL codec with invalid codeTextLength
 		if (codecType == 0 && codeTextLengthBits != valueCount * 32) {
-			Logger.error("CDP VALIDATION ERROR at byte offset {}", startIndex);
-			Logger.error("  NULL codec requires codeTextLengthBits={} (valueCount={} * 32)", 
-			            valueCount * 32, valueCount);
-			Logger.error("  But got codeTextLengthBits={}", codeTextLengthBits);
-			Logger.warn("  Attempting to find valid CDP offset with EXTENDED SCAN...");
-			int validOffset = findValidCDPOffset(buffer, startIndex, 500);  // Scan ±250 bytes
-			if (validOffset != startIndex) {
-				Logger.warn("  Retrying with offset {}", validOffset);
-				return readInt32CDP(buffer, validOffset);  // Recursive call with corrected offset
-			}
+			Logger.error("CDP VALIDATION ERROR at byte offset {}: NULL codec requires codeTextLengthBits={} but got {}", 
+			            startIndex, valueCount * 32, codeTextLengthBits);
 			return new VecI32(0, new int[0], startIndex + 9);
 		}
-		
+			
 		// Check for unrealistic value counts (indicates wrong offset)
 		if (valueCount < 0 || valueCount > 1000000) {
-			Logger.error("CDP VALIDATION ERROR at byte offset {}", startIndex);
-			Logger.error("  Invalid valueCount: {} (expected 0-1000000)", valueCount);
-			Logger.error("  CodecType: {} (0x{:02X})", codecType, codecType & 0xFF);
-			Logger.error("  CodeTextLengthBits: {}", codeTextLengthBits);
-			Logger.error("  Possible causes:");
-			Logger.error("    - Wrong byte offset passed");
-			Logger.error("    - Buffer too small or offset out of bounds");
-			Logger.warn("  Attempting to find valid CDP offset with EXTENDED SCAN...");
-			int validOffset = findValidCDPOffset(buffer, startIndex, 500);  // Scan ±250 bytes
-			if (validOffset != startIndex) {
-				Logger.warn("  Retrying with offset {}", validOffset);
-				return readInt32CDP(buffer, validOffset);  // Recursive call with corrected offset
-			}
-			
-			// Return empty result instead of crashing (9 byte header + 0 data = 9 bytes)
+			Logger.error("CDP VALIDATION ERROR at byte offset {}: invalid valueCount={}", startIndex, valueCount);
 			return new VecI32(0, new int[0], startIndex + 9);
 		}
-		
+			
 		// Check for invalid codec type
 		if (codecType < 0 || codecType > 5) {
-			Logger.error("CDP VALIDATION ERROR at byte offset {}", startIndex);
-			Logger.error("  Invalid codecType: {} (must be 0-5)", codecType);
-			Logger.error("  ValueCount: {}", valueCount);
-			Logger.error("  CodeTextLengthBits: {}", codeTextLengthBits);
-			Logger.error("  Possible causes: Wrong byte offset or corrupted data");
-			
-			// Return empty result instead of crashing (9 byte header)
+			Logger.error("CDP VALIDATION ERROR at byte offset {}: invalid codecType={}", startIndex, codecType);
 			return new VecI32(0, new int[0], startIndex + 9);
 		}
-		
-		// Check for negative code text length (common sign error)
+			
+		// Check for negative code text length
 		if (codeTextLengthBits < 0) {
-			Logger.warn("CDP WARNING at byte offset {}", startIndex);
-			Logger.warn("  Negative codeTextLengthBits: {} (treating as 0)", codeTextLengthBits);
+			Logger.warn("CDP WARNING at byte offset {}: negative codeTextLengthBits={}, treating as 0", startIndex, codeTextLengthBits);
 			codeTextLengthBits = 0;
 		}
-		
+			
 		Logger.debug("CDP Header: valueCount={}, codec={}, codeTextLengthBits={} at byteOffset={}", 
 		             valueCount, codecType, codeTextLengthBits, startIndex);
-		
-		// CDP structure in bytes:
-		// Bytes 0-3:   valueCount (4 bytes)
-		// Byte 4:      codecType (1 byte)
-		// Bytes 5-8:   codeTextLength (4 bytes)
-		// Total header: 9 bytes
-		// Bytes 9+:    Encoded data (variable, size in bits: codeTextLengthBits)
-		
+			
+		// ========== CODEC DISPATCH (Standard codecs) ==========
 		int cdpHeaderBytes = 9;
 		int encodedDataStartByte = startIndex + cdpHeaderBytes;
 		int encodedDataStartBit = encodedDataStartByte * 8;
-		int endBit = encodedDataStartBit + codeTextLengthBits;
-		int endByte = (endBit + 7) / 8;  // Round up to next byte boundary
-		
+		int codeTextWordBytes = ((codeTextLengthBits + 31) / 32) * 4;
+		endByte = encodedDataStartByte + codeTextWordBytes;
+			
 		int[] decodedValues = new int[(int) valueCount];
+		boolean codecImplemented = true;
 		
-		// ========== CODEC DISPATCH ==========
+		// ========== CODEC DISPATCH (SWITCH) ==========
 		switch (codecType) {
 		case 0 -> decodeNullCodec(buffer, encodedDataStartBit, codeTextLengthBits, 
 		                            decodedValues, (int) valueCount);
 		case 1 -> decodeBitlengthCodec(buffer, encodedDataStartBit, codeTextLengthBits,
 		                                decodedValues, (int) valueCount);
 		case 3 -> decodeArithmeticCodec(buffer, encodedDataStartBit, codeTextLengthBits,
-		                                 decodedValues, (int) valueCount);
-		case 2 -> System.err.println("WARNING: CODEC 2 (Illegal) not implemented");
-		case 4 -> System.err.println("WARNING: CODEC 4 (Chopper) not yet implemented");
-		case 5 -> System.err.println("WARNING: CODEC 5 (Move-to-Front) not yet implemented");
-		default -> System.err.println("ERROR: Unknown CODEC type: " + codecType);
+	                                 decodedValues, (int) valueCount);
+		case 2 -> {
+			Logger.warn("CODEC 2 (Illegal) not implemented");
+			codecImplemented = false;
 		}
-		
+		case 4 -> {
+			Logger.warn("CODEC 4 (Chopper) should have been handled in header parsing!");
+			codecImplemented = false;
+		}
+		case 5 -> {
+			Logger.warn("CODEC 5 (Move-to-Front) not yet implemented");
+			codecImplemented = false;
+		}
+		default -> {
+			Logger.error("ERROR: Unknown CODEC type: {}", codecType);
+			codecImplemented = false;
+		}
+		}
+			
 		// ========== RESIDUAL UNPACKING ==========
-		// Reference: codecDriverClass.cpp - unpackResiduals()
-		// The codec decoding returns residuals that must be reconstructed using prediction.
-		// This matches the C++ CodecDriver::unpackResiduals() logic.
-		if (valueCount > 0) {
+		if (codecImplemented && valueCount > 0) {
 			unpackResiduals(decodedValues, PredictorType.PredLag1);
 		}
-		
-		// Return with byte position (consistent with rest of codebase)
-		// Callers expect byte offsets and will multiply by 8 if needed for bit operations
+
+		// ========== TAIL STRUCTURES (after codeTextWords) ==========
+		// Per JT spec, after codeTextWords (only for top-level CDPs, not OOB):
+		//   Codec 3 (Arithmetic): Int32ProbabilityContext + OOB Int32CDP
+		//   Codec 1 (Bitlength): OOB Int32CDP
+		//   Codec 0 (Null): no tail
+		// OOB CDPs are leaf nodes — they never recurse into further tails.
+
+		if (!isOobCall && codecType == 3) {
+			// ===== ARITHMETIC TAIL: Probability Context + conditional OOB CDP =====
+			int probCtxStartBit = endByte * 8;
+			Logger.info("  Arithmetic tail: reading probability context at bit {} (byte {})", probCtxStartBit, endByte);
+			
+			Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
+			int probCtxEndBit = ctx.jtEndBitIndex();
+			
+			int probCtxEndByte = (probCtxEndBit + 7) / 8;
+			Logger.info("  Arithmetic tail: probability context ends at byte {} ({} bits consumed)", probCtxEndByte, probCtxEndBit - probCtxStartBit);
+			
+			// OOB CDP is present only when probability context has an escape symbol
+			boolean hasEscape = false;
+			if (ctx.entries() != null) {
+				for (var entry : ctx.entries()) {
+					if (entry.isEscapeSymbol()) {
+						hasEscape = true;
+						break;
+					}
+				}
+			}
+			
+			if (hasEscape) {
+				Logger.info("  Arithmetic tail: escape symbol found, reading OOB CDP at byte {}", probCtxEndByte);
+				VecI32 oobCdp = readInt32CDP(buffer, probCtxEndByte, recursionDepth + 1, true);
+				endByte = oobCdp.jtEndIndex();
+				Logger.info("  Arithmetic tail: OOB CDP ends at byte {}", endByte);
+			} else {
+				Logger.info("  Arithmetic tail: no escape symbol, no OOB CDP");
+				endByte = probCtxEndByte;
+			}
+		}
+			
+		// Log the offset calculation for debugging
+		Logger.debug("CDP Offset Calculation: startIndex={}, endByte={}", startIndex, endByte);
+			
 		return new VecI32((int) valueCount, decodedValues, endByte);
 	}
-	
+
 	/**
 	 * Decodes Null CODEC (codec type 0) - Reference: Arithmetic.cpp, nullCodec pattern
 	 * In Null CODEC, values are stored completely unencoded as raw 32-bit signed integers.
@@ -412,18 +562,32 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	                                           int[] outValues, int valueCount) {
 		Logger.debug("Decoding Arithmetic CODEC: {} values, {} bits encoded data", valueCount, lengthBits);
 		
-		// Initialize arithmetic decoder state (from C++ ArithmeticCodec::decode)
+		if (valueCount == 0) {
+			Logger.debug("  Arithmetic codec with 0 values - skipping decoding");
+			return;
+		}
+
+		// Decode exactly from the code-text payload range. Probability context is not embedded
+		// in this code-text stream and must not shift the next CDP offset.
 		ArithmeticBitReader reader = new ArithmeticBitReader(buffer, startBit, lengthBits);
+		
 		
 		// Decode values using uniform probability distribution (simplified)
 		// Full implementation would use probability context from JT10 file format
 		for (int i = 0; i < valueCount; i++) {
-			// This is a placeholder - actual implementation needs probability context
-			// For now, read raw bits (incorrect but structure is in place)
-			if (i < valueCount) {
-				outValues[i] = reader.decodeSymbol();
-			}
+			outValues[i] = reader.decodeSymbol();
 		}
+		
+		// Log how many bits were actually consumed vs expected
+		int bitsConsumed = reader.getBitsConsumed();
+		Logger.debug("  Arithmetic CODEC actual bits consumed: {} vs expected: {}", bitsConsumed, lengthBits);
+		if (bitsConsumed != lengthBits) {
+			Logger.warn("  WARNING: Bit consumption mismatch!");
+			Logger.warn("    Consumed: {} bits", bitsConsumed);
+			Logger.warn("    Expected: {} bits", lengthBits);
+			Logger.warn("    Difference: {} bits", lengthBits - bitsConsumed);
+		}
+		return;
 	}
 	
 	/**
@@ -450,7 +614,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 */
 	private static class BitReader {
 		private BitByteBuffer buffer;
-		private int bitPosition;
+		int bitPosition;  // Package-private for access by ArithmeticBitReader
 		
 		BitReader(BitByteBuffer buffer, int startBit) {
 			this.buffer = buffer;
@@ -496,14 +660,23 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			bitPosition++;
 			return bit;
 		}
+		
+		int bitsRemaining() {
+			return (buffer.capacity() * 8) - bitPosition;
+		}
 	}
 	
 	/**
 	 * Helper class for Arithmetic codec decoding.
 	 * Reference: Arithmetic.cpp ArithmeticCodec class
+	 * 
+	 * CRITICAL FIX: Now properly limits bit reading to the encoded data length
+	 * to prevent reading past the end of the codec data.
 	 */
 	private static class ArithmeticBitReader {
 		private BitReader bitReader;
+		private int startBit;  // Initial bit position
+		private int endBit;  // Absolute bit position where encoded data ends
 		private int code;
 		private int low;
 		private int high;
@@ -511,6 +684,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		
 		ArithmeticBitReader(BitByteBuffer buffer, int startBit, int lengthBits) {
 			this.bitReader = new BitReader(buffer, startBit);
+			this.startBit = startBit;  // Store initial position
+			this.endBit = startBit + lengthBits;  // Store the boundary
 			
 			// Initialize decoder state (from C++ reference line ~200)
 			this.low = 0x0000;
@@ -524,8 +699,23 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		/**
 		 * Decode a single symbol using simplified uniform probability
 		 * Full implementation would require probability context
+		 * 
+		 * CRITICAL FIX: Now checks bounds to prevent reading past the encoded data
 		 */
 		int decodeSymbol() {
+			// Check if we've reached the end of encoded data
+			if (bitReader.bitPosition >= endBit) {
+				Logger.debug("  Arithmetic codec reached end of encoded data at bit {}/{}", 
+				             bitReader.bitPosition, endBit);
+				return 0;  // Return 0 to signal end of data
+			}
+			
+			// Calculate remaining bits we can read
+			int bitsRemaining = endBit - bitReader.bitPosition;
+			if (bitsRemaining < 8) {
+				Logger.debug("  Only {} bits remaining (need 8), truncating symbol read", bitsRemaining);
+			}
+			
 			// Placeholder: return a reasonable default
 			// In full implementation, this would use probability context
 			// to scale the code and find the symbol range
@@ -533,10 +723,23 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			int value = ((code - low) * symbolRange) / scale;
 			if (value >= symbolRange) value = symbolRange - 1;
 			
+
 			// Update decoder state (simplified)
-			code = bitReader.readBits(8);  // Read next symbol bits
+			// Only read if we have enough bits remaining
+			if (bitsRemaining >= 8) {
+				code = bitReader.readBits(8);  // Read next symbol bits
+			} else if (bitsRemaining > 0) {
+				code = bitReader.readBits(bitsRemaining);  // Read remaining bits
+			}
 			
 			return value & 0xFF;
+		}
+		
+		/**
+		 * Returns total bits consumed by this decoder so far (relative to start position)
+		 */
+		int getBitsConsumed() {
+			return bitReader.bitPosition - startBit;
 		}
 	}
 //						codeTextLength = buffer.getInt(startIndex + 5 + i);
@@ -680,20 +883,27 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		
 		// Remaining arrays: VecI32.fromByteBuffer takes BYTE OFFSET
 		// Get byte offset from jtEndIndex() which now returns bytes
-		VecI32 vertexFlags = VecI32.fromByteBuffer(buffer, vertexGroups.jtEndIndex());
+//		VecI32 vertexFlags = VecI32.fromByteBuffer(buffer, vertexGroups.jtEndIndex());
+		VecI32 vertexFlags = readInt32CDP(buffer, vertexGroups.jtEndIndex());
 		
 		// Read 8 Face Attribute Masks arrays (byte offsets)
 		VecI32[] faceAttributeMasks = new VecI32[8];
 		byteOffset = vertexFlags.jtEndIndex();
+		Logger.info("=== Starting faceAttributeMasks at byte {}", byteOffset);
 		for (int i = 0; i < 8; i++) {
-			faceAttributeMasks[i] = VecI32.fromByteBuffer(buffer, byteOffset);
-			byteOffset = faceAttributeMasks[i].jtEndIndex();
+			faceAttributeMasks[i] = readInt32CDP(buffer, byteOffset);
+			int nextOffset = faceAttributeMasks[i].jtEndIndex();
+			Logger.info("  faceAttributeMasks[{}]: count={}, offset {}→{}", i, faceAttributeMasks[i].count(), byteOffset, nextOffset);
+			byteOffset = nextOffset;
 		}
 		
-		VecI32 faceAttributeMask8 = VecI32.fromByteBuffer(buffer, byteOffset);
+//		VecI32 faceAttributeMask8 = VecI32.fromByteBuffer(buffer, byteOffset);
+		VecI32 faceAttributeMask8 = readInt32CDP(buffer, byteOffset);
 		VecU32 highDegreeFaceAttributeMasks = VecU32.fromByteBuffer(buffer, faceAttributeMask8.jtEndIndex());
-		VecI32 splitFaceSyms = VecI32.fromByteBuffer(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
-		VecI32 splitFacePositions = VecI32.fromByteBuffer(buffer, splitFaceSyms.jtEndIndex());
+//		VecI32 splitFaceSyms = VecI32.fromByteBuffer(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
+		VecI32 splitFaceSyms = readInt32CDP(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
+//		VecI32 splitFacePositions = VecI32.fromByteBuffer(buffer, splitFaceSyms.jtEndIndex());
+		VecI32 splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex());
 		
 		// Return record with proper jtEndIndex
 		return new TopologicallyCompressedRepDataRecord(faceDegrees, vertexValences, vertexGroups, vertexFlags, faceAttributeMasks, faceAttributeMask8, highDegreeFaceAttributeMasks, splitFaceSyms, splitFacePositions, 0, null);

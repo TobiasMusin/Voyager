@@ -21,11 +21,21 @@ public record VertexShapeLODDataRecord(
 
 	public static VertexShapeLODDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex, boolean shapeIsTriStripSetShapeNodeElement) {
 		BaseShapeLODDataRecord baseShapeLODData = BaseShapeLODDataRecord.fromByteBuffer(buffer, startIndex);
-		int versionNumber = buffer.get(baseShapeLODData.jtEndIndex());	
-		long vertexBindings = ReadFromBufferUtils.readUnsignedLong(buffer, baseShapeLODData.jtEndIndex() + 1);
+		int baseEndIndex = baseShapeLODData.jtEndIndex();
+		// CRITICAL FIX: BaseShapeLODDataRecord now correctly consumes only 1 byte instead of 6
+		// So we need to account for the 5-byte correction in our offset calculations
+		// The mystery 5 bytes that were being skipped were actually part of this record's data!
+		int versionByteOffset = baseEndIndex;
+		int vertexBindingsOffset = baseEndIndex + 1;
+		int topoStartOffset = baseEndIndex + 1 + 8;  // After versionNumber (1 byte) + vertexBindings (8 bytes)
+		
+		int versionNumber = buffer.get(versionByteOffset);	
+		long vertexBindings = ReadFromBufferUtils.readUnsignedLong(buffer, vertexBindingsOffset);
 		
 		Logger.info("VertexShapeLODDataRecord.fromByteBuffer:");
-		Logger.info("  startIndex={}, baseShapeLODData.jtEndIndex()={}", startIndex, baseShapeLODData.jtEndIndex());
+		Logger.info("  startIndex={}, baseShapeLODData.jtEndIndex()={}", startIndex, baseEndIndex);
+		Logger.info("  versionByteOffset={}, vertexBindingsOffset={}", versionByteOffset, vertexBindingsOffset);
+		Logger.info("  topoStartOffset={}", topoStartOffset);
 		Logger.info("  shapeIsTriStripSetShapeNodeElement={}", shapeIsTriStripSetShapeNodeElement);
 		Logger.info("  versionNumber={}, vertexBindings={}", versionNumber, vertexBindings);
 		
@@ -33,11 +43,11 @@ public record VertexShapeLODDataRecord(
 		TopoMeshCompressedLODDataRecord topoMeshCompressedLODDataRecord = null;
 	
 		if (shapeIsTriStripSetShapeNodeElement) {
-			Logger.info("  Reading TopoMeshTopologicallyCompressedLODDataRecord at offset {}", baseShapeLODData.jtEndIndex() + 9);
-			topoMeshTopologicallyCompressedLODDataRecord = TopoMeshTopologicallyCompressedLODDataRecord.fromByteBuffer(buffer, baseShapeLODData.jtEndIndex() + 9);
+			Logger.info("  Reading TopoMeshTopologicallyCompressedLODDataRecord at offset {}", topoStartOffset);
+			topoMeshTopologicallyCompressedLODDataRecord = TopoMeshTopologicallyCompressedLODDataRecord.fromByteBuffer(buffer, topoStartOffset);
 		} else {
-			Logger.info("  Reading TopoMeshCompressedLODDataRecord at offset {}", baseShapeLODData.jtEndIndex() + 9);
-			topoMeshCompressedLODDataRecord = TopoMeshCompressedLODDataRecord.fromByteBuffer(buffer, baseShapeLODData.jtEndIndex() + 9);
+			Logger.info("  Reading TopoMeshCompressedLODDataRecord at offset {}", topoStartOffset);
+			topoMeshCompressedLODDataRecord = TopoMeshCompressedLODDataRecord.fromByteBuffer(buffer, topoStartOffset);
 			Logger.info("  TopoMeshCompressedLODDataRecord ended at offset {}", topoMeshCompressedLODDataRecord.jtEndIndex());
 			Logger.info("  TopologicallyCompressedRepDataRecord should start at offset {}", topoMeshCompressedLODDataRecord.jtEndIndex());
 		}

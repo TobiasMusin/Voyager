@@ -32,11 +32,18 @@
 			<artifactId>xz</artifactId>
 			<version>1.9</version>
 		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>${junit.jupiter.version}</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<properties>
-		<maven.compiler.source>24</maven.compiler.source>
-		<maven.compiler.target>24</maven.compiler.target>
+		<maven.compiler.release>24</maven.compiler.release>
+		<main.class>io.github.tomusin.voyager.Main</main.class>
+		<junit.jupiter.version>5.12.2</junit.jupiter.version>
 	</properties>
 
 	<build>
@@ -49,7 +56,7 @@
 						<manifest>
 							<addClasspath>true</addClasspath>
 							<classpathPrefix>lib/</classpathPrefix>
-							<mainClass>${project.groupId}.Main</mainClass>
+							<mainClass>${main.class}</mainClass>
 						</manifest>
 					</archive>
 				</configuration>
@@ -67,7 +74,7 @@
 					</execution>
 				</executions>
 				<configuration>
-					<mainClass>io.github.tomusin.Main</mainClass>
+					<mainClass>${main.class}</mainClass>
 				</configuration>
 			</plugin>
 		</plugins>
@@ -128,7 +135,7 @@
 							</execution>
 						</executions>
 						<configuration>
-							<mainClass>io.github.tomusin.voyager.Main</mainClass>
+							<mainClass>${main.class}</mainClass>
 							<buildArgs>
 								<buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
 			    				<buildArg>--no-fallback</buildArg>
