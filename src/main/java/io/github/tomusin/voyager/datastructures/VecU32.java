@@ -29,6 +29,9 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
     public static VecU32 fromByteBuffer(BitByteBuffer buffer, int startIndex) {
     	// startIndex is now a BIT OFFSET (not byte offset) to handle non-aligned CDP data
     	int count = buffer.getIntAtBitPosition(startIndex);
+    	if (count < 0 || count > 10_000_000) {
+    		throw new IllegalArgumentException("VecU32.fromByteBuffer: unreasonable count=" + count + " at bit offset " + startIndex);
+    	}
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
     		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, (startIndex + 32 + i * 32) / 8);
@@ -41,6 +44,19 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
     	for (int i = 0; i < count; i++) {
     		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, startIndex + i * 4);
     	}
-    	return new VecU32(count, valueArray, startIndex + 1 + count * 4);
+    	return new VecU32(count, valueArray, startIndex + count * 4);
+    }
+    
+    /**
+     * Read a VecU32 from byte-aligned buffer position (reads count from buffer first).
+     * Uses little-endian byte order (normal JT file reads), NOT bit-stream order.
+     */
+    public static VecU32 fromByteBufferAligned(BitByteBuffer buffer, int byteStartIndex) {
+    	int count = buffer.getInt(byteStartIndex);
+    	long[] valueArray = new long[count];
+    	for (int i = 0; i < count; i++) {
+    		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, byteStartIndex + 4 + i * 4);
+    	}
+    	return new VecU32(count, valueArray, byteStartIndex + 4 + count * 4);
     }
 }

@@ -5,7 +5,7 @@ import java.nio.ByteBuffer;
 import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
-import io.github.tomusin.voyager.datastructures.VecU32;
+import io.github.tomusin.voyager.datastructures.VecI32;
 import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
@@ -13,8 +13,8 @@ public record CompressedVertexCoordinateArrayRecord(
 		int uniqueVertexCount,
 		int numberComponents,
 		PointQuantizerDataRecord pointQuantizerData,
-		VecU32[] binaryVertexCoords,
-		VecU32[] vertexCoordCords,
+		VecI32[] binaryVertexCoords,
+		VecI32[] vertexCoordCords,
 		int vertexCoordinateHash,
 		int jtEndIndex
 		) implements BufferDeserializable {
@@ -22,37 +22,83 @@ public record CompressedVertexCoordinateArrayRecord(
 	public static CompressedVertexCoordinateArrayRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		int uniqueVertexCount = buffer.getInt(startIndex);
 		int numberComponents = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
+		Logger.info("CompressedVertexCoordinateArray: uniqueVertexCount={}, numberComponents={}, startIndex={}", uniqueVertexCount, numberComponents, startIndex);
 		PointQuantizerDataRecord pointQuantizerData = PointQuantizerDataRecord.fromByteBuffer(buffer, startIndex + 5);
-		// From the documentation:
-		// The above predicates “QuantBits = 0” and “QuantBits > 0” refer to the value of the field U8: Number Of 
-		// Bits stored in the three components of Point Quantizer Data. All three of these fields are required to be 
-		// equal
+		Logger.info("  PointQuantizer X: min={}, max={}, bits={}", pointQuantizerData.xUniformQuantizerData().min(), pointQuantizerData.xUniformQuantizerData().max(), pointQuantizerData.xUniformQuantizerData().numberOfBits());
+		Logger.info("  PointQuantizer Y: min={}, max={}, bits={}", pointQuantizerData.yUniformQuantizerData().min(), pointQuantizerData.yUniformQuantizerData().max(), pointQuantizerData.yUniformQuantizerData().numberOfBits());
+		Logger.info("  PointQuantizer Z: min={}, max={}, bits={}", pointQuantizerData.zUniformQuantizerData().min(), pointQuantizerData.zUniformQuantizerData().max(), pointQuantizerData.zUniformQuantizerData().numberOfBits());
+		Logger.info("  PointQuantizer ends at byte offset {}", pointQuantizerData.jtEndIndex());
 		
-		// For now we just assume they are equal and only make a 'lazy' check if they are greater or equal 0
 		int quantBits = pointQuantizerData.xUniformQuantizerData().numberOfBits() 
 				+ pointQuantizerData.yUniformQuantizerData().numberOfBits() 
 				+ pointQuantizerData.zUniformQuantizerData().numberOfBits();
 		
-		VecU32[] vertexCoordCords = null;
-		VecU32[] binaryVertexCoords = null;
+		VecI32[] vertexCoordCords = null;
+		VecI32[] binaryVertexCoords = null;
 		
-		int nextVectorStartIndex = pointQuantizerData.zUniformQuantizerData().jtEndIndex();
+		int nextOffset = pointQuantizerData.zUniformQuantizerData().jtEndIndex();
+		Logger.info("  quantBits={}, nextOffset(bytes)={}", quantBits, nextOffset);
 		if (quantBits > 0) {
-			vertexCoordCords = new VecU32[numberComponents];
+			vertexCoordCords = new VecI32[numberComponents];
 			for (int i = 0; i < numberComponents; i++) {
-				vertexCoordCords[i] = VecU32.fromByteBuffer(buffer, nextVectorStartIndex);
-				nextVectorStartIndex = vertexCoordCords[i].jtEndIndex();
+				vertexCoordCords[i] = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, nextOffset);
+				nextOffset = vertexCoordCords[i].jtEndIndex();
+				Logger.info("  vertexCoordCords[{}]: count={}, nextOffset={}", i, vertexCoordCords[i].count(), nextOffset);
 			}
 		} else if (quantBits == 0) {
-			binaryVertexCoords = new VecU32[numberComponents];
+			binaryVertexCoords = new VecI32[numberComponents];
 			for (int i = 0; i < numberComponents; i++) {
-				binaryVertexCoords[i] = VecU32.fromByteBuffer(buffer, nextVectorStartIndex);
-				nextVectorStartIndex = binaryVertexCoords[i].jtEndIndex();
+				binaryVertexCoords[i] = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, nextOffset);
+				nextOffset = binaryVertexCoords[i].jtEndIndex();
+				Logger.info("  binaryVertexCoords[{}]: count={}, values={}, nextOffset={}", i, binaryVertexCoords[i].count(), 
+						java.util.Arrays.toString(binaryVertexCoords[i].valueArray()), nextOffset);
 			}
 		} else {
-			Logger.error("Something went wrong when checking the number of QuantBits. Maybe you are at the wrong buffer index.");
+			Logger.error("Something went wrong when checking the number of QuantBits.");
 		}
-		int vertexCoordinateHash = buffer.getInt(nextVectorStartIndex);
-		return new CompressedVertexCoordinateArrayRecord(uniqueVertexCount, numberComponents, pointQuantizerData, binaryVertexCoords, vertexCoordCords, vertexCoordinateHash, nextVectorStartIndex + 4);
+		int vertexCoordinateHash = buffer.getInt(nextOffset);
+		Logger.info("  vertexCoordinateHash=0x{}, endOffset={}", Integer.toHexString(vertexCoordinateHash), nextOffset + 4);
+		return new CompressedVertexCoordinateArrayRecord(uniqueVertexCount, numberComponents, pointQuantizerData, binaryVertexCoords, vertexCoordCords, vertexCoordinateHash, nextOffset + 4);
+	}
+	
+	/**
+	 * Dequantizes the vertex coordinate codes back to float coordinates.
+	 * Returns a float[numberComponents][uniqueVertexCount] array with the actual coordinate values.
+	 * For quantized data: value = min + code * (max - min) / (2^bits - 1)
+	 * For binary data: reinterprets the stored I32 values as IEEE 754 floats.
+	 */
+	public float[][] dequantize() {
+		float[][] result = new float[numberComponents][];
+		
+		UniformQuantizerDataRecord[] quantizers = {
+			pointQuantizerData.xUniformQuantizerData(),
+			pointQuantizerData.yUniformQuantizerData(),
+			pointQuantizerData.zUniformQuantizerData()
+		};
+		
+		for (int c = 0; c < numberComponents; c++) {
+			UniformQuantizerDataRecord q = quantizers[c];
+			
+			if (vertexCoordCords != null) {
+				// Quantized path
+				int[] codes = vertexCoordCords[c].valueArray();
+				result[c] = new float[codes.length];
+				float min = q.min();
+				float max = q.max();
+				int bits = q.numberOfBits();
+				double maxCode = (1L << bits) - 1;
+				for (int i = 0; i < codes.length; i++) {
+					result[c][i] = (float) (min + (codes[i] & 0xFFFFFFFFL) * (max - min) / maxCode);
+				}
+			} else if (binaryVertexCoords != null) {
+				// Binary (unquantized) path - codes are IEEE 754 float bits
+				int[] codes = binaryVertexCoords[c].valueArray();
+				result[c] = new float[codes.length];
+				for (int i = 0; i < codes.length; i++) {
+					result[c][i] = Float.intBitsToFloat(codes[i]);
+				}
+			}
+		}
+		return result;
 	}
 }

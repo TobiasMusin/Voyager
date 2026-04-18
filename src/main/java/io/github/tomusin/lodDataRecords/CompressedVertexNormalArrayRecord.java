@@ -23,6 +23,16 @@ public record CompressedVertexNormalArrayRecord(
 		int normalCount = buffer.getInt(startIndex);
 		int numberComponents = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
 		int quantizationBits = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 5);
+		
+		Logger.info("CompressedVertexNormalArray: normalCount={}, numberComponents={}, quantizationBits={}, startIndex={}", 
+				normalCount, numberComponents, quantizationBits, startIndex);
+		
+		// Sanity check to prevent OOM from wrong offsets
+		if (normalCount < 0 || normalCount > 1_000_000 || numberComponents < 0 || numberComponents > 4) {
+			Logger.error("CompressedVertexNormalArray: invalid normalCount={} or numberComponents={} at offset {}", 
+					normalCount, numberComponents, startIndex);
+			return new CompressedVertexNormalArrayRecord(0, 0, 0, null, null, 0, startIndex + 6);
+		}
 		VecU32[] binaryVertexNormals = null;
 		VecU32[] deeringNormalCodes = null;
 		int nextVectorStartIndex = startIndex + 6;

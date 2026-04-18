@@ -13,8 +13,8 @@ public record PointQuantizerDataRecord(
 
 	public static PointQuantizerDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
 		UniformQuantizerDataRecord xUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'x');
-		UniformQuantizerDataRecord yUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'y');
-		UniformQuantizerDataRecord zUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, startIndex, 'z');
+		UniformQuantizerDataRecord yUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, xUniformQuantizerData.jtEndIndex(), 'y');
+		UniformQuantizerDataRecord zUniformQuantizerData = UniformQuantizerDataRecord.fromByteBuffer(buffer, yUniformQuantizerData.jtEndIndex(), 'z');
 		return new PointQuantizerDataRecord(xUniformQuantizerData, yUniformQuantizerData, zUniformQuantizerData);
 	}
 	@Override

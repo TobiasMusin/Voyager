@@ -9,6 +9,8 @@ import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.VecI32;
 import io.github.tomusin.voyager.datastructures.VecU32;
 import io.github.tomusin.voyager.utils.BitByteBuffer;
+import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
+import io.github.tomusin.voyager.viewer.JTGeometryViewer;
 
 // Page 97, Figure 92
 public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 vertexValences, VecI32 vertexGroups,
@@ -181,7 +183,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		return startIndex;
 	}
 
-	private static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex) {
+	static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex) {
 		return readInt32CDP(buffer, startIndex, 0, false);
 	}
 	
@@ -246,14 +248,21 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return new VecI32(0, new int[0], lsbData.jtEndIndex());
 		}
 		
+		if (valueCount == 0 && codecType == 5) {
+			Logger.info("  Empty MtF CDP header at byte {}", startIndex);
+			VecI32 msbData = readInt32CDP(buffer, startIndex + 5, recursionDepth + 1, false);
+			VecI32 winData = readInt32CDP(buffer, msbData.jtEndIndex(), recursionDepth + 1, false);
+			return new VecI32(0, new int[0], winData.jtEndIndex());
+		}
+		
 		if (valueCount == 0) {
 			// When valueCount is 0, only the 4-byte count field is present (no codecType or further data)
 			Logger.info("  Empty CDP at byte {}, advancing 4 bytes", startIndex);
 			return new VecI32(0, new int[0], startIndex + 4);
 		}
 		
-		// Bounds check for standard header (9 bytes minimum for non-Chopper)
-		if (codecType != 4 && startIndex + 9 > buffer.capacity()) {
+		// Bounds check for standard header (9 bytes minimum for non-Chopper/MtF)
+		if (codecType != 4 && codecType != 5 && startIndex + 9 > buffer.capacity()) {
 			Logger.error("readInt32CDP: startIndex {} needs 9 bytes but only {} available", 
 			            startIndex, buffer.capacity() - startIndex);
 			return new VecI32(0, new int[0], startIndex);
@@ -270,7 +279,24 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		int codeTextLengthBits = 0;
 		int endByte = startIndex + 9;  // Default for standard codecs
 		
-		if (codecType == 4) {
+		if (codecType == 5) {
+			// ========== MOVE-TO-FRONT CODEC ==========
+			// MtF codec consists of two nested Int32CDPs (no codeTextLength field):
+			//   1. Int32 Compressed Data Packet: Chopped MSB Data
+			//   2. Int32 Compressed Data Packet: Window Offsets
+			Logger.info("  MtF codec at byte {}: valueCount={}", startIndex, valueCount);
+			
+			VecI32 choppedMsbData = readInt32CDP(buffer, startIndex + 5, recursionDepth + 1, false);
+			Logger.info("  MtF: Chopped MSB Data: count={}, endByte={}", choppedMsbData.count(), choppedMsbData.jtEndIndex());
+			
+			VecI32 windowOffsets = readInt32CDP(buffer, choppedMsbData.jtEndIndex(), recursionDepth + 1, false);
+			Logger.info("  MtF: Window Offsets: count={}, endByte={}", windowOffsets.count(), windowOffsets.jtEndIndex());
+			
+			// TODO: implement actual MtF decoding using choppedMsbData + windowOffsets
+			int[] decodedData = new int[valueCount];
+			
+			return new VecI32(valueCount, decodedData, windowOffsets.jtEndIndex());
+		} else if (codecType == 4) {
 			// ========== CHOPPER CODEC HEADER ==========
 			
 			int chopBits = buffer.get(startIndex + 5) & 0xFF;
@@ -375,8 +401,41 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		                            decodedValues, (int) valueCount);
 		case 1 -> decodeBitlengthCodec(buffer, encodedDataStartBit, codeTextLengthBits,
 		                                decodedValues, (int) valueCount);
-		case 3 -> decodeArithmeticCodec(buffer, encodedDataStartBit, codeTextLengthBits,
-	                                 decodedValues, (int) valueCount);
+		case 3 -> {
+			// ===== ARITHMETIC CODEC: Must read probability context FIRST =====
+			// The probability context is stored AFTER the code text words.
+			// We need it to decode, so read it first, then decode.
+			if (!isOobCall) {
+				int probCtxStartBit = endByte * 8;
+				Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
+				int probCtxEndBit = ctx.jtEndBitIndex();
+				int probCtxEndByte = (probCtxEndBit + 7) / 8;
+				
+				// Check for OOB CDP (present if escape symbol exists)
+				boolean hasEscape = false;
+				int[] oobValues = null;
+				if (ctx.entries() != null) {
+					for (var entry : ctx.entries()) {
+						if (entry.isEscapeSymbol()) { hasEscape = true; break; }
+					}
+				}
+				if (hasEscape) {
+					VecI32 oobCdp = readInt32CDP(buffer, probCtxEndByte, recursionDepth + 1, true);
+					oobValues = oobCdp.valueArray();
+					endByte = oobCdp.jtEndIndex();
+				} else {
+					endByte = probCtxEndByte;
+				}
+				
+				// NOW decode using the probability context
+				decodeArithmeticCodecWithContext(buffer, encodedDataStartBit, codeTextLengthBits,
+				                                 decodedValues, (int) valueCount, ctx, oobValues);
+			} else {
+				// OOB call: no probability context, use simplified decode
+				decodeArithmeticCodec(buffer, encodedDataStartBit, codeTextLengthBits,
+				                     decodedValues, (int) valueCount);
+			}
+		}
 		case 2 -> {
 			Logger.warn("CODEC 2 (Illegal) not implemented");
 			codecImplemented = false;
@@ -386,7 +445,9 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			codecImplemented = false;
 		}
 		case 5 -> {
-			Logger.warn("CODEC 5 (Move-to-Front) not yet implemented");
+			// MtF is handled in the header section (early return) like Chopper.
+			// This case should never be reached.
+			Logger.error("CODEC 5 (MtF) should have been handled in header parsing!");
 			codecImplemented = false;
 		}
 		default -> {
@@ -397,47 +458,20 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			
 		// ========== RESIDUAL UNPACKING ==========
 		if (codecImplemented && valueCount > 0) {
+			Logger.info("  Before Lag1: first 10 values: {}", java.util.Arrays.toString(java.util.Arrays.copyOf(decodedValues, Math.min(10, decodedValues.length))));
 			unpackResiduals(decodedValues, PredictorType.PredLag1);
+			Logger.info("  After Lag1: first 10 values: {}", java.util.Arrays.toString(java.util.Arrays.copyOf(decodedValues, Math.min(10, decodedValues.length))));
 		}
 
 		// ========== TAIL STRUCTURES (after codeTextWords) ==========
 		// Per JT spec, after codeTextWords (only for top-level CDPs, not OOB):
-		//   Codec 3 (Arithmetic): Int32ProbabilityContext + OOB Int32CDP
-		//   Codec 1 (Bitlength): OOB Int32CDP
+		//   Codec 3 (Arithmetic): Already handled above (read before decoding)
+		//   Codec 1 (Bitlength): No separate OOB CDP (escape values are inline)
 		//   Codec 0 (Null): no tail
 		// OOB CDPs are leaf nodes — they never recurse into further tails.
 
 		if (!isOobCall && codecType == 3) {
-			// ===== ARITHMETIC TAIL: Probability Context + conditional OOB CDP =====
-			int probCtxStartBit = endByte * 8;
-			Logger.info("  Arithmetic tail: reading probability context at bit {} (byte {})", probCtxStartBit, endByte);
-			
-			Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
-			int probCtxEndBit = ctx.jtEndBitIndex();
-			
-			int probCtxEndByte = (probCtxEndBit + 7) / 8;
-			Logger.info("  Arithmetic tail: probability context ends at byte {} ({} bits consumed)", probCtxEndByte, probCtxEndBit - probCtxStartBit);
-			
-			// OOB CDP is present only when probability context has an escape symbol
-			boolean hasEscape = false;
-			if (ctx.entries() != null) {
-				for (var entry : ctx.entries()) {
-					if (entry.isEscapeSymbol()) {
-						hasEscape = true;
-						break;
-					}
-				}
-			}
-			
-			if (hasEscape) {
-				Logger.info("  Arithmetic tail: escape symbol found, reading OOB CDP at byte {}", probCtxEndByte);
-				VecI32 oobCdp = readInt32CDP(buffer, probCtxEndByte, recursionDepth + 1, true);
-				endByte = oobCdp.jtEndIndex();
-				Logger.info("  Arithmetic tail: OOB CDP ends at byte {}", endByte);
-			} else {
-				Logger.info("  Arithmetic tail: no escape symbol, no OOB CDP");
-				endByte = probCtxEndByte;
-			}
+			// Already handled above - skip
 		}
 			
 		// Log the offset calculation for debugging
@@ -455,10 +489,11 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	                                     int[] outValues, int valueCount) {
 		Logger.debug("Decoding Null CODEC: {} values, {} bits encoded data", valueCount, lengthBits);
 		
-		// Null codec stores raw 32-bit signed integers sequentially
-		// Each value occupies exactly 32 bits
+		// Null codec stores raw 32-bit signed integers as LE words in code text.
+		// Use buffer.getInt() which reads LE (matching the ByteBuffer's byte order).
+		int startByte = startBit / 8;
 		for (int i = 0; i < valueCount; i++) {
-			outValues[i] = buffer.getIntAtBitPosition(startBit + i * 32);
+			outValues[i] = buffer.getInt(startByte + i * 4);
 		}
 	}
 	
@@ -488,60 +523,73 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 		
 		try {
-			BitReader reader = new BitReader(buffer, startBit);
+			// Use CodeTextBitReader which reads bits from LE 32-bit words MSB-first,
+			// matching the C++ GetUnsignedBits/GetSignedBits/getNextCodeText pattern.
+			// startBit is always byte-aligned (encodedDataStartByte * 8).
+			int startByte = startBit / 8;
+			CodeTextBitReader reader = new CodeTextBitReader(buffer, startByte, lengthBits);
 			
 			// Read format tag (bit 0) - determines fixed vs variable width
+			// C++ line 493: GetUnsignedBits(iTmp, 1)
 			int formatTag = reader.readBit();
+			Logger.info("Bitlength CODEC: formatTag={}, startByte={}", formatTag, startByte);
 			
 			if (formatTag == 0) {
 				// ===== FIXED-WIDTH FORMAT =====
-				// Used when the value range is small enough that fixed encoding is more efficient
-				// Min/max are encoded using nibbler encoding (4-bit groups with continuation bits)
-				int minSymbol = readNibblerValue(reader);
-				int maxSymbol = readNibblerValue(reader);
+				// C++ decode lines 494-507: nibblerGet min/max, bitsize(max-min), read unsigned + add min
+				int minSymbol = reader.nibblerGetSigned();
+				int maxSymbol = reader.nibblerGetSigned();
+				Logger.info("Bitlength FIXED: minSymbol={}, maxSymbol={}", minSymbol, maxSymbol);
 				
-				// Calculate bits needed to represent range
+				// bitsize of UNSIGNED range (C++ line 498: bitsize(UInt32(iMaxSymbol - iMinSymbol)))
 				int valSpanBits = bitsize(maxSymbol - minSymbol);
+				Logger.info("Bitlength FIXED: valSpanBits={}", valSpanBits);
 				
-				// Read all values as fixed-width offsets from minSymbol
+				// Read all values as unsigned fixed-width offsets from minSymbol (C++ lines 500-506)
 				for (int i = 0; i < valueCount; i++) {
-					int value = reader.readBits(valSpanBits);
+					int value = reader.readBits(valSpanBits); // unsigned read
 					outValues[i] = value + minSymbol;
 				}
 			} else {
-				// ===== VARIABLE-WIDTH FORMAT =====
-				// Used when values have varying magnitude, reducing total bits needed
-				// Mean value is encoded using nibbler encoding
-				int meanValue = readNibblerValue(reader);
+				// ===== VARIABLE-WIDTH FORMAT (Block-based) =====
+				// C++ decode lines 511-537
+				// Structure: mean via nibbler, then blocks of [delta-width-loop][run-length][values...]
+				int meanValue = reader.nibblerGetSigned();
+				Logger.info("Bitlength VARIABLE: meanValue={} (0x{})", meanValue, Integer.toHexString(meanValue));
 				
-				// Decode variable-width encoded values
-				// Field width (bits per value) adapts as values are decoded
-				int currentFieldWidth = 0;
-				final int cBlkValBits = 4;   // Bits per field-width delta (from C++ reference)
-				final int maxFieldIncr = (1 << (cBlkValBits - 1)) - 1;  // Max positive delta
-				final int maxFieldDecr = -(1 << (cBlkValBits - 1));     // Max negative delta
+				final int cBlkValBits = 4;   // Bits per field-width delta (C++ line 225)
+				final int cBlkLenBits = 4;   // Bits per run length (C++ line 223)
+				final int maxFieldIncr = (1 << (cBlkValBits - 1)) - 1;  // +7
+				final int maxFieldDecr = -(1 << (cBlkValBits - 1));     // -8
 				
-				for (int i = 0; i < valueCount; i++) {
-					// Read field width adjustment using signed 4-bit value
-					int widthDelta = reader.readSignedBits(cBlkValBits);
-					currentFieldWidth += widthDelta;
+				int cCurFieldWidth = 0;
+				int ii = 0;
+				
+				while (ii < valueCount) {
+					// Step 1: Adjust field width (loop while delta is at extremes)
+					// C++ lines 522-527
+					int cDeltaFieldWidth;
+					do {
+						cDeltaFieldWidth = reader.readSignedBits(cBlkValBits);
+						cCurFieldWidth += cDeltaFieldWidth;
+					} while (cDeltaFieldWidth == maxFieldDecr || cDeltaFieldWidth == maxFieldIncr);
 					
-					// Validate field width is non-negative
-					if (currentFieldWidth < 0) {
-						Logger.warn("Bitlength CODEC: Invalid negative field width: {} at index {}", currentFieldWidth, i);
-						currentFieldWidth = 0;
+					// Step 2: Read run length (unsigned, cBlkLenBits bits)
+					// C++ line 529
+					int cRunLen = reader.readBits(cBlkLenBits);
+					
+					// Step 3: Read values for the run (signed, cCurFieldWidth bits each)
+					// C++ lines 531-534
+					for (int k = 0; k < cRunLen && ii + k < valueCount; k++) {
+						int value = reader.readSignedBits(cCurFieldWidth);
+						outValues[ii + k] = value + meanValue;
 					}
 					
-					if (currentFieldWidth > 32) {
-						Logger.warn("Bitlength CODEC: Field width too large: {} at index {}", currentFieldWidth, i);
-						currentFieldWidth = 32;
-					}
-					
-					// Read the value with current field width
-					int encodedValue = reader.readSignedBits(currentFieldWidth);
-					outValues[i] = encodedValue + meanValue;
+					ii += cRunLen;
 				}
 			}
+			
+			Logger.info("Bitlength CODEC: consumed {} of {} bits", reader.getBitsConsumed(), lengthBits);
 		} catch (Exception e) {
 			Logger.error("Bitlength CODEC decoding failed: {}", e.getMessage());
 			Logger.error("  valueCount: {}, lengthBits: {}, startBit: {}", valueCount, lengthBits, startBit);
@@ -591,21 +639,310 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	}
 	
 	/**
-	 * Reads a nibbler-encoded value (4-bit groups with continuation bit).
-	 * From C++ reference Bitlength.cpp: nibblerEmit/nibbler decoding
+	 * Decodes Arithmetic CODEC using the actual probability context.
+	 * Implements standard 16-bit precision arithmetic decoding.
+	 * 
+	 * Reference: Standard Arithmetic Coding algorithm
+	 * - 16-bit precision (low/high in [0, 0xFFFF])
+	 * - MSB-first bit reading
+	 * - Escape symbols map to OOB CDP values
+	 */
+	private static void decodeArithmeticCodecWithContext(BitByteBuffer buffer, int startBit, int lengthBits,
+	                                                      int[] outValues, int valueCount,
+	                                                      Int32ProbabilityContextRecord ctx,
+	                                                      int[] oobValues) {
+		Logger.info("Decoding Arithmetic CODEC with context: {} values, {} bits, {} context entries",
+		           valueCount, lengthBits, ctx.entryCount());
+		
+		if (valueCount == 0 || ctx.entries() == null || ctx.entries().isEmpty()) return;
+		
+		// Build cumulative frequency table from probability context
+		var entries = ctx.entries();
+		int numSymbols = entries.size();
+		int[] cumFreq = new int[numSymbols + 1]; // cumFreq[0] = 0, cumFreq[numSymbols] = totalFreq
+		int[] symbolValues = new int[numSymbols];
+		boolean[] isEscape = new boolean[numSymbols];
+		
+		cumFreq[0] = 0;
+		for (int i = 0; i < numSymbols; i++) {
+			var entry = entries.get(i);
+			symbolValues[i] = entry.associatedValue() + ctx.minValue();
+			isEscape[i] = entry.isEscapeSymbol();
+			cumFreq[i + 1] = cumFreq[i] + entry.occurrenceCount();
+		}
+		int totalFreq = cumFreq[numSymbols];
+		
+		Logger.info("  Arithmetic context: {} symbols, totalFreq={}, minValue={}", numSymbols, totalFreq, ctx.minValue());
+		for (int i = 0; i < Math.min(numSymbols, 10); i++) {
+			Logger.info("    Symbol {}: value={}, freq={}, escape={}", i, symbolValues[i], entries.get(i).occurrenceCount(), isEscape[i]);
+		}
+		
+		if (totalFreq == 0) {
+			Logger.error("Arithmetic codec: totalFreq is 0, cannot decode");
+			return;
+		}
+		
+		// Standard Arithmetic Decoding (16-bit precision)
+		final int CODE_BITS = 16;
+		final int TOP_VALUE = (1 << CODE_BITS) - 1; // 0xFFFF
+		final int FIRST_QTR = (TOP_VALUE + 1) / 4;  // 0x4000
+		final int HALF = 2 * FIRST_QTR;              // 0x8000
+		final int THIRD_QTR = 3 * FIRST_QTR;         // 0xC000
+		
+		// Read bits from LE 32-bit code text words using CodeTextBitReader
+		// (same word-based reading as Bitlength codec)
+		int startByte = startBit / 8;
+		CodeTextBitReader ctReader = new CodeTextBitReader(buffer, startByte, lengthBits);
+		int bitsRead = 0;
+		
+		// Initialize: read first CODE_BITS bits into code register
+		int code = 0;
+		for (int i = 0; i < CODE_BITS; i++) {
+			code = (code << 1) | ctReader.readBit();
+			bitsRead++;
+		}
+		int low = 0;
+		int high = TOP_VALUE;
+		
+		Logger.info("    Initial code=0x{} ({})", Integer.toHexString(code), code);
+		
+		int oobIndex = 0;
+		
+		for (int v = 0; v < valueCount; v++) {
+			// Determine symbol from current code
+			int range = high - low + 1;
+			int cum = (int)(((long)(code - low + 1) * totalFreq - 1) / range);
+			
+			// Find symbol: cumFreq[sym] <= cum < cumFreq[sym+1]
+			int sym = 0;
+			for (sym = 0; sym < numSymbols; sym++) {
+				if (cumFreq[sym + 1] > cum) break;
+			}
+			if (sym >= numSymbols) sym = numSymbols - 1;
+			
+			if (v < 4) Logger.info("    v={}: code={}, low={}, high={}, range={}, cum={}, sym={}, isEsc={}", 
+			                        v, code, low, high, range, cum, sym, isEscape[sym]);
+			
+			// Get the value for this symbol
+			if (isEscape[sym]) {
+				// Escape symbol: get value from OOB CDP
+				if (oobValues != null && oobIndex < oobValues.length) {
+					outValues[v] = oobValues[oobIndex++];
+				} else {
+					outValues[v] = 0;
+				}
+			} else {
+				outValues[v] = symbolValues[sym];
+			}
+			
+			// Update decoder state
+			high = low + (int)((long)range * cumFreq[sym + 1] / totalFreq) - 1;
+			low = low + (int)((long)range * cumFreq[sym] / totalFreq);
+			
+			// Normalize
+			while (true) {
+				if (high < HALF) {
+					// Both in lower half - shift out 0
+				} else if (low >= HALF) {
+					// Both in upper half - shift out 1
+					code -= HALF;
+					low -= HALF;
+					high -= HALF;
+				} else if (low >= FIRST_QTR && high < THIRD_QTR) {
+					// Convergence - shift out middle
+					code -= FIRST_QTR;
+					low -= FIRST_QTR;
+					high -= FIRST_QTR;
+				} else {
+					break;
+				}
+				low = low << 1;
+				high = (high << 1) + 1;
+				// Read next bit (0 if past end of data)
+				int nextBit = (bitsRead < lengthBits) ? ctReader.readBit() : 0;
+				bitsRead++;
+				code = (code << 1) | nextBit;
+				
+				// Keep values in 16-bit range
+				low &= TOP_VALUE;
+				high &= TOP_VALUE;
+				code &= TOP_VALUE;
+			}
+		}
+		
+		Logger.info("  Arithmetic decoded: first 10 values: {}", 
+		           java.util.Arrays.toString(java.util.Arrays.copyOf(outValues, Math.min(10, outValues.length))));
+	}
+
+	/**
+	 * Reads a nibbler-encoded unsigned value (4-bit groups with continuation bit).
+	 * From C++ reference Bitlength.cpp: nibblerGet(UInt32&)
 	 * Format: [4-bit nibble][1-bit continue][4-bit nibble][1-bit continue]...
+	 */
+	private static int readNibblerValueUnsigned(BitReader reader) {
+		int result = 0;
+		int cNibbles = 0;
+		while (true) {
+			int nibble = reader.readBits(4);
+			result |= (nibble << (cNibbles * 4));
+			int contBit = reader.readBits(1);  // 1 = more nibbles, 0 = end
+			cNibbles++;
+			if (contBit == 0) break;
+		}
+		return result;
+	}
+
+	/**
+	 * Reads a nibbler-encoded signed value (4-bit groups with continuation bit + sign extension).
+	 * From C++ reference Bitlength.cpp: nibblerGet(Int32&) lines 114-133
 	 */
 	private static int readNibblerValue(BitReader reader) {
 		int result = 0;
-		int shift = 0;
+		int cNibbles = 0;
 		while (true) {
 			int nibble = reader.readBits(4);
-			result |= (nibble << shift);
+			result |= (nibble << (cNibbles * 4));
 			int contBit = reader.readBits(1);  // 1 = more nibbles, 0 = end
+			cNibbles++;
 			if (contBit == 0) break;
-			shift += 4;
+		}
+		// Sign-extend the resulting bits (C++ lines 127-131)
+		int sw = cNibbles * 4;
+		if (sw < 32) {
+			result <<= (32 - sw);
+			result >>= (32 - sw); // arithmetic right shift for sign extension
 		}
 		return result;
+	}
+	
+	/**
+	 * Bit reader that mirrors the C++ Bitlength codec bit reading:
+	 * reads from LE 32-bit code text words, MSB-first within each word.
+	 * 
+	 * C++ reference: Bitlength.cpp lines 36-57 (GetUnsignedBits),
+	 * lines 29-34 (GetSignedBits), lines 576-582 (getNextCodeText).
+	 * 
+	 * The code text is stored as VecU32 (LE 32-bit words). Bits are read
+	 * from bit 31 (MSB) to bit 0 (LSB) within each word, then advancing
+	 * to the next word. This differs from raw byte-stream MSB-first reading.
+	 */
+	private static class CodeTextBitReader {
+		private final BitByteBuffer buffer;
+		private final int codeTextStartByte; // byte offset where code text words begin
+		private final int totalBits;         // total bits in code text
+		private int wordIndex;               // current word index (0-based)
+		private int uVal;                    // current 32-bit word value (bits shift left as consumed)
+		private int nValBits;                // bits remaining in current word
+		private int nBitsConsumed;           // total bits consumed so far
+		
+		CodeTextBitReader(BitByteBuffer buffer, int codeTextStartByte, int totalBits) {
+			this.buffer = buffer;
+			this.codeTextStartByte = codeTextStartByte;
+			this.totalBits = totalBits;
+			this.wordIndex = 0;
+			this.nBitsConsumed = 0;
+			// Load first word
+			loadNextWord();
+		}
+		
+		private void loadNextWord() {
+			int byteOffset = codeTextStartByte + wordIndex * 4;
+			// Read LE 32-bit word (buffer.getInt uses LE byte order)
+			uVal = buffer.getInt(byteOffset);
+			// How many valid bits in this word?
+			nValBits = Math.min(32, totalBits - wordIndex * 32);
+			if (nValBits < 32) {
+				// Shift valid bits to MSB position (C++ stores them MSB-aligned)
+				// Actually in C++, getNextCodeText just returns the raw word and nBits.
+				// GetUnsignedBits reads from MSB (bit 31) downward.
+				// If the last word has fewer than 32 valid bits, the valid bits
+				// are still in the MSB positions after being written by addCodeText.
+				// No shift needed - they're already MSB-aligned in the word.
+			}
+			wordIndex++;
+		}
+		
+		/**
+		 * Read n unsigned bits. Mirrors C++ GetUnsignedBits (lines 36-57).
+		 */
+		int readBits(int n) {
+			if (n == 0) return 0;
+			
+			int uOut;
+			if (nValBits >= n) {
+				// Enough bits in current word
+				uOut = uVal >>> (32 - n);
+				if (n == 32) {
+					uVal = 0; // C++: _uVal &= (n==32)-1 → _uVal = 0
+				} else {
+					uVal <<= n;
+				}
+				nValBits -= n;
+				nBitsConsumed += n;
+			} else {
+				// Need bits from current word + next word
+				int nLBits = nValBits;
+				uOut = uVal >>> (32 - n);
+				nBitsConsumed += nLBits;
+				loadNextWord();
+				int nRBits = n - nLBits;
+				uOut |= uVal >>> (32 - nRBits);
+				if (nRBits == 32) {
+					uVal = 0;
+				} else {
+					uVal <<= nRBits;
+				}
+				nValBits -= nRBits;
+				nBitsConsumed += nRBits;
+			}
+			return uOut;
+		}
+		
+		/**
+		 * Read n signed bits with sign extension. Mirrors C++ GetSignedBits (lines 29-34).
+		 */
+		int readSignedBits(int n) {
+			if (n == 0) return 0;
+			int uOut = readBits(n);
+			// Sign extend: shift left then arithmetic shift right
+			uOut <<= (32 - n);
+			uOut >>= (32 - n); // arithmetic right shift in Java
+			return uOut;
+		}
+		
+		/**
+		 * Read a single bit (0 or 1).
+		 */
+		int readBit() {
+			return readBits(1);
+		}
+		
+		/**
+		 * Nibbler decode for signed Int32. Mirrors C++ nibblerGet(Int32&) lines 114-133.
+		 */
+		int nibblerGetSigned() {
+			int result = 0;
+			int cNibbles = 0;
+			int bMoreBits;
+			do {
+				int uTmp = readBits(4); // cNibbleWidth = 4
+				uTmp <<= cNibbles * 4;
+				result |= uTmp;
+				bMoreBits = readBits(1);
+				cNibbles++;
+			} while (bMoreBits != 0);
+			// Sign-extend
+			int sw = cNibbles * 4;
+			if (sw < 32) {
+				result <<= (32 - sw);
+				result >>= (32 - sw);
+			}
+			return result;
+		}
+		
+		int getBitsConsumed() {
+			return nBitsConsumed;
+		}
 	}
 	
 	/**
@@ -898,20 +1235,68 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 		
 //		VecI32 faceAttributeMask8 = VecI32.fromByteBuffer(buffer, byteOffset);
+		System.out.println("TRACE: about to read faceAttributeMask8 at byteOffset=" + byteOffset);
 		VecI32 faceAttributeMask8 = readInt32CDP(buffer, byteOffset);
-		VecU32 highDegreeFaceAttributeMasks = VecU32.fromByteBuffer(buffer, faceAttributeMask8.jtEndIndex());
-//		VecI32 splitFaceSyms = VecI32.fromByteBuffer(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
-		VecI32 splitFaceSyms = readInt32CDP(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
-//		VecI32 splitFacePositions = VecI32.fromByteBuffer(buffer, splitFaceSyms.jtEndIndex());
-		VecI32 splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex());
+		Logger.info("faceAttributeMask8 count={}, endOffset={}", faceAttributeMask8.count(), faceAttributeMask8.jtEndIndex());
+		VecU32 highDegreeFaceAttributeMasks = null;
+		VecI32 splitFaceSyms = null;
+		VecI32 splitFacePositions = null;
+		long compositeHash = 0;
+		TopologicallyCompressedVertexRecordsRecord topologicallyCompressedVertexRecords = null;
 		
-		// Return record with proper jtEndIndex
-		return new TopologicallyCompressedRepDataRecord(faceDegrees, vertexValences, vertexGroups, vertexFlags, faceAttributeMasks, faceAttributeMask8, highDegreeFaceAttributeMasks, splitFaceSyms, splitFacePositions, 0, null);
+		try {
+			// Use byte-aligned read since data is LE byte-aligned
+			highDegreeFaceAttributeMasks = VecU32.fromByteBufferAligned(buffer, faceAttributeMask8.jtEndIndex());
+			Logger.info("highDegreeFaceAttributeMasks count={}, endOffset={}", highDegreeFaceAttributeMasks.count(), highDegreeFaceAttributeMasks.jtEndIndex());
+			splitFaceSyms = readInt32CDP(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
+			Logger.info("splitFaceSyms count={}, endOffset={}", splitFaceSyms.count(), splitFaceSyms.jtEndIndex());
+			splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex());
+			Logger.info("splitFacePositions count={}, endOffset={}", splitFacePositions.count(), splitFacePositions.jtEndIndex());
+			
+			// U32: CompositeHash
+			int compositeHashOffset = splitFacePositions.jtEndIndex();
+			Logger.info("TRACE: compositeHashOffset={}", compositeHashOffset);
+			
+			compositeHash = ReadFromBufferUtils.readUnsignedInt(buffer, compositeHashOffset);
+			Logger.info("CompositeHash = 0x{}", Long.toHexString(compositeHash));
+			
+			// TopologicallyCompressedVertexRecords
+			topologicallyCompressedVertexRecords = 
+					TopologicallyCompressedVertexRecordsRecord.fromByteBuffer(buffer, compositeHashOffset + 4);
+			
+			// Print the dequantized vertex coordinate array
+			if (topologicallyCompressedVertexRecords.compressedVertexCoordinateArray() != null) {
+				CompressedVertexCoordinateArrayRecord coordArray = topologicallyCompressedVertexRecords.compressedVertexCoordinateArray();
+				Logger.info("=== Compressed Vertex Coordinate Array ===");
+				Logger.info("uniqueVertexCount = {}, numberComponents = {}", coordArray.uniqueVertexCount(), coordArray.numberComponents());
+				Logger.info("vertexCoordinateHash = 0x{}", Integer.toHexString(coordArray.vertexCoordinateHash()));
+				float[][] coords = coordArray.dequantize();
+				String[] labels = {"X", "Y", "Z", "W"};
+				for (int c = 0; c < coords.length; c++) {
+					String label = c < labels.length ? labels[c] : "C" + c;
+					Logger.info("  {} coords (first 10): {}", label, 
+							java.util.Arrays.toString(java.util.Arrays.copyOf(coords[c], Math.min(10, coords[c].length))));
+				}
+				Logger.info("  Total vertices: {}", coords[0].length);
+				
+				// Launch 3D viewer to display the geometry
+				JTGeometryViewer.show(coordArray);
+			}
+		} catch (Exception e) {
+			Logger.error(e, "Failed to parse highDegreeFaceAttributeMasks/splitFace/vertexRecords");
+			Logger.error("This is likely due to incorrect offset calculation for highDegreeFaceAttributeMasks at offset {}", faceAttributeMask8.jtEndIndex());
+		}
+		
+		return new TopologicallyCompressedRepDataRecord(faceDegrees, vertexValences, vertexGroups, vertexFlags, faceAttributeMasks, faceAttributeMask8, highDegreeFaceAttributeMasks, splitFaceSyms, splitFacePositions, compositeHash, topologicallyCompressedVertexRecords);
 	}
 
 	@Override
 	public int jtEndIndex() {
-		return topologicallyCompressedVertexRecords.jtEndIndex();
+		if (topologicallyCompressedVertexRecords != null) {
+			return topologicallyCompressedVertexRecords.jtEndIndex();
+		}
+		// Fallback when vertex records couldn't be parsed
+		return splitFacePositions != null ? splitFacePositions.jtEndIndex() : 0;
 	}
 
 	public static void dumpBytes(ByteBuffer buffer, int startIndex, int numBytes) {
@@ -1226,14 +1611,12 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 
 			int fieldWidth = bitsize(max - min);
 
-			// Decode all values with fixed field width
+			// Decode all values with fixed field width (unsigned, add min)
 			for (int i = 0; i < valueCount; i++) {
 				int symbol = 0;
 				if (fieldWidth != 0) {
-					// Read as unsigned then sign-extend
+					// Read as unsigned (C++ line 502: GetUnsignedBits)
 					symbol = (int) byteBuffer.readBitsAt(currentBitPosition, fieldWidth);
-					symbol <<= (32 - fieldWidth);
-					symbol >>= (32 - fieldWidth); // arithmetic right shift for sign extension
 					currentBitPosition += fieldWidth;
 				}
 				decodedSymbols[i] = symbol + min;
@@ -1249,12 +1632,12 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			int mean = meanResult.value;
 			currentBitPosition = meanResult.endBitPosition;
 			
-			// Constants from spec
-			final int cBlkValBits = 3; // signed delta width
-			final int cBlkLenBits = 4; // run length width
+			// Constants from C++ reference (Bitlength.cpp lines 223-225)
+			final int cBlkValBits = 4; // signed delta width (4 bits)
+			final int cBlkLenBits = 4; // run length width (4 bits)
 
-			int cMaxFieldDecr = -(1 << (cBlkValBits - 1)); // -4
-			int cMaxFieldIncr = (1 << (cBlkValBits - 1)) - 1; // +3
+			int cMaxFieldDecr = -(1 << (cBlkValBits - 1)); // -8
+			int cMaxFieldIncr = (1 << (cBlkValBits - 1)) - 1; // +7
 
 			int cCurFieldWidth = 0;
 			int ii = 0;

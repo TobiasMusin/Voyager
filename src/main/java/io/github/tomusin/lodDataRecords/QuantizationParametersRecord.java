@@ -15,11 +15,11 @@ public record QuantizationParametersRecord(
 		) implements BufferDeserializable {
 
 	public static QuantizationParametersRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
-		int bitsPerVertex = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 1);
-		int normalBitsFactor = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 2);
-		int bitsPerTextureCoord = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 3);
-		int bitsPerColor = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
-		int jtEndIndex = startIndex + 5;
+		int bitsPerVertex = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex);
+		int normalBitsFactor = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 1);
+		int bitsPerTextureCoord = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 2);
+		int bitsPerColor = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 3);
+		int jtEndIndex = startIndex + 4;
 		return new QuantizationParametersRecord(bitsPerVertex, normalBitsFactor, bitsPerTextureCoord, bitsPerColor, jtEndIndex);
 	}
 	@Override

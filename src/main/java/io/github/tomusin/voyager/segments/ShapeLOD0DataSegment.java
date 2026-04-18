@@ -72,7 +72,8 @@ public class ShapeLOD0DataSegment  extends DataSegment  {
 				}
 			}
 		} catch (Exception e) {
-			
+			Logger.error("ShapeLOD0DataSegment: Exception during parsing: {}", e.getMessage());
+			e.printStackTrace();
 		}
 	}
 	ByteOrder fileByteOrder;
