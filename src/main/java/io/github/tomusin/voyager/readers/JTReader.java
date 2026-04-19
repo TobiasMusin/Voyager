@@ -5,13 +5,18 @@ import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.tinylog.Logger;
 
+import io.github.tomusin.lodElements.TriStripSetShapeLODElementRecord;
+import io.github.tomusin.voyager.datastructures.BufferDeserializable;
+import io.github.tomusin.voyager.datastructures.TreeNode;
 import io.github.tomusin.voyager.fileRecords.FileHeaderRecord;
 import io.github.tomusin.voyager.fileRecords.SegmentHeaderRecord;
 import io.github.tomusin.voyager.fileRecords.TOCRecord;
@@ -30,6 +35,26 @@ public class JTReader {
 	private static Set<String> writersThatWriteI32SegmentOffset = Set.of("Version 10.5 JT  DM 10.3.1.2", "Version 10.3 JT  DM 9.4.0.0", "Version 9.5 JT  DM 8.0.7.0", "Version 10.5 JT  DM 10.6.0.3");
 	private String strippedVersionString;
 	private ByteOrder fileByteOrder;
+
+	/** The LSG segment containing the scene graph tree */
+	private LSGDataSegment lsgSegment;
+	/** All parsed ShapeLOD0 segments */
+	private final List<ShapeLOD0DataSegment> shapeLOD0Segments = new ArrayList<>();
+
+	/**
+	 * Returns the root nodes of the scene graph tree with geometry linked.
+	 * Call after {@link #startReading(Path)}.
+	 */
+	public List<TreeNode> getRootNodes() {
+		return lsgSegment != null ? lsgSegment.getRootNodes() : List.of();
+	}
+
+	/**
+	 * Returns all tree nodes indexed by object ID.
+	 */
+	public Map<Integer, TreeNode> getTreeNodeMap() {
+		return lsgSegment != null ? lsgSegment.getTreeNodeMap() : Map.of();
+	}
 
 	public void startReading(Path filename) {
 		long startTime = System.nanoTime();
@@ -60,11 +85,75 @@ public class JTReader {
 
 	        Arrays.stream(segmentOffsets).forEach(segmentHeaderOffset -> readSegmentHeaderEntry(buffer, segmentHeaderOffset, segmentHeaderMap));
 
+	        // Link ShapeLOD0 geometry to tree nodes
+	        linkGeometryToTree();
+
 	    } catch (Exception e) {
 	        e.printStackTrace();
 	    }
 	    long endTime = System.nanoTime();
 	    Logger.info("Total time: {} ms", (endTime - startTime) / 1_000_000);
+	}
+	
+	/**
+	 * Links geometry from ShapeLOD0 segments to the corresponding tree nodes.
+	 * ShapeLOD0 elements are matched to tree nodes by object ID — if a tree node
+	 * has a child reference to an object ID that exists in a ShapeLOD0 segment,
+	 * the geometry is attached to that tree node.
+	 */
+	private void linkGeometryToTree() {
+		if (lsgSegment == null || shapeLOD0Segments.isEmpty()) return;
+
+		Map<Integer, TreeNode> treeNodeMap = lsgSegment.getTreeNodeMap();
+
+		for (ShapeLOD0DataSegment shapeSeg : shapeLOD0Segments) {
+			for (Map.Entry<Integer, BufferDeserializable> entry : shapeSeg.getElementsByObjectID().entrySet()) {
+				int objectID = entry.getKey();
+				BufferDeserializable obj = entry.getValue();
+
+				if (obj instanceof TriStripSetShapeLODElementRecord lodElement) {
+					// Check if this object ID is already a tree node (direct match)
+					TreeNode node = treeNodeMap.get(objectID);
+					if (node != null) {
+						node.setLodGeometry(lodElement);
+						Logger.debug("Linked geometry to tree node {} ({})", objectID, node.nodeType);
+						continue;
+					}
+
+					// Otherwise, find tree nodes that reference this ID as a child
+					for (TreeNode treeNode : treeNodeMap.values()) {
+						BufferDeserializable element = treeNode.getElement();
+						if (element == null) continue;
+
+						Set<Integer> childIDs = getChildObjectIDs(element);
+						if (childIDs.contains(objectID)) {
+							treeNode.setLodGeometry(lodElement);
+							Logger.debug("Linked geometry to parent tree node {} ({}) via child ref {}",
+									treeNode.objectID, treeNode.nodeType, objectID);
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// Log summary
+		long geometryCount = treeNodeMap.values().stream().filter(TreeNode::hasGeometry).count();
+		Logger.info("Linked {} geometry elements to tree nodes", geometryCount);
+	}
+
+	/**
+	 * Extract child object IDs from an element, matching the logic in LSGDataSegment.connectTreeHierarchy.
+	 */
+	private Set<Integer> getChildObjectIDs(BufferDeserializable obj) {
+		return switch (obj) {
+			case io.github.tomusin.lsgElements.GroupNodeElementRecord g -> g.grouNodeDataRecord().childNodeObjectIDSet();
+			case io.github.tomusin.lsgElements.MetaDataNodeElementRecord m -> m.metaDataNodeDataRecord().groupNodeDataRecord().childNodeObjectIDSet();
+			case io.github.tomusin.lsgElements.PartitionNodeElementRecord p -> p.groupNodeDataRecord().childNodeObjectIDSet();
+			case io.github.tomusin.lsgElements.PartNodeElementRecord p -> p.metaDataNodeDataRecord().groupNodeDataRecord().childNodeObjectIDSet();
+			case io.github.tomusin.lsgElements.RangeLODNodeElementRecord r -> r.lodNodeDataRecord().groupNodeDataRecord().childNodeObjectIDSet();
+			default -> Set.of();
+		};
 	}
 	
 	private void readTOCEntry(MappedByteBuffer buffer, int startIndex, Map<String, TOCRecord> tocMap, boolean i32InsteadOfU64) {
@@ -92,14 +181,14 @@ public class JTReader {
 		int segmentType = buffer.getInt(startIndex + 16);
 		int segmentLength = buffer.getInt(startIndex + 16 + 4);
 		segmentHeaderMap.put(segmentGUID, new SegmentHeaderRecord(segmentGUID, segmentType, segmentLength));
-		Logger.info("SegmentHeader type: {}", segmentHeaderMap.get(segmentGUID).segmentType());
 
-		if (segmentHeaderMap.get(segmentGUID).segmentType() == 1) {
-			LSGDataSegment lsgDataSegment = new LSGDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
-		} else if (segmentHeaderMap.get(segmentGUID).segmentType() == 4) {
-			MetaDataSegment metaDataSegment = new MetaDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);; 
-		} else if (segmentHeaderMap.get(segmentGUID).segmentType() == 7) {
-			ShapeLOD0DataSegment shapeLOD0DataSegment = new ShapeLOD0DataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);; 
+		if (segmentType == 1) {
+			lsgSegment = new LSGDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
+		} else if (segmentType == 4) {
+			new MetaDataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
+		} else if (segmentType == 7) {
+			ShapeLOD0DataSegment shapeSeg = new ShapeLOD0DataSegment(segmentHeaderMap.get(segmentGUID), buffer.duplicate(), startIndex, fileByteOrder);
+			shapeLOD0Segments.add(shapeSeg);
 		}
 	}
 	

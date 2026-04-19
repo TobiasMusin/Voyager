@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -40,6 +42,14 @@ public class LSGDataSegment extends DataSegment{
 	private static final Set<Integer> EMPTY_INT_SET = Set.of();
 	private static final String END_OF_ELEMENTS_SIGNIFIER = "{FFFFFFFF-FFFF-FFFF-FF-FF-FF-FF-FF-FF-FF-FF}";
 	ByteOrder fileByteOrder;
+
+	/** Root nodes of the scene graph (nodes that are not children of any other node) */
+	private final List<TreeNode> rootNodes = new ArrayList<>();
+	/** All tree nodes indexed by object ID */
+	private final Map<Integer, TreeNode> treeNodeMap = new HashMap<>();
+
+	public List<TreeNode> getRootNodes() { return rootNodes; }
+	public Map<Integer, TreeNode> getTreeNodeMap() { return treeNodeMap; }
 
 	public LSGDataSegment(SegmentHeaderRecord segmentHeaderRecord, MappedByteBuffer buffer, int segmentStartIndex, ByteOrder fileByteOrder) {
 		super(segmentHeaderRecord);
@@ -100,7 +110,6 @@ public class LSGDataSegment extends DataSegment{
 				PropertyTableRecord propertyTableRecord = PropertyTableRecord.fromByteBuffer(decompressedLSGSegmentBuffer, startIndex);
 				Logger.info("PropertyTableRecord is: {}", propertyTableRecord);
 				
-				Map<Integer, TreeNode> treeNodeMap = new HashMap<>();
 				Set<Integer> childObjectIDs = new HashSet<>();
 				Map<LogicalElementHeaderRecord, BufferDeserializable> elementMap = new ConcurrentHashMap<>();
 				
@@ -136,14 +145,16 @@ public class LSGDataSegment extends DataSegment{
 				Logger.info("Time until connectTreeHierarchy: {}", (connectTreeHierarchy - startTime)/ 1_000_000);
 				Logger.info("Time for connectTreeHierarchy: {}", (connectTreeHierarchy -attachAttributesToTreeNodes)/ 1_000_000);
 				
+				// Collect root nodes (nodes that are not children of any other node)
 				for (TreeNode node : treeNodeMap.values()) {
 				    if (!childObjectIDs.contains(node.objectID)) {
+				        rootNodes.add(node);
 				        printTree(node, "");
 				    }
 				}
 				
 			} catch (IOException _) {
-				Logger.error("Could not decomresss data segment");
+				Logger.error("Could not decompress data segment");
 			}
 		}
 	}
@@ -253,6 +264,7 @@ public class LSGDataSegment extends DataSegment{
 		        }
 		    }
 
+		    node.setElement(obj);
 		    treeNodeMap.put(header.objectID(), node);
 		});
 	}

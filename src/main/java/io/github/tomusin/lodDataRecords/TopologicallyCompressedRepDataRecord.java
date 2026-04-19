@@ -9,7 +9,6 @@ import io.github.tomusin.voyager.datastructures.VecI32;
 import io.github.tomusin.voyager.datastructures.VecU32;
 import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
-import io.github.tomusin.voyager.viewer.JTGeometryViewer;
 
 // Page 97, Figure 92
 public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 vertexValences, VecI32 vertexGroups,
@@ -849,17 +848,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// TopologicallyCompressedVertexRecords
 			topologicallyCompressedVertexRecords = 
 					TopologicallyCompressedVertexRecordsRecord.fromByteBuffer(buffer, compositeHashOffset + 4);
-			
-			// Print the dequantized vertex coordinate array
-			if (topologicallyCompressedVertexRecords.compressedVertexCoordinateArray() != null) {
-				CompressedVertexCoordinateArrayRecord coordArray = topologicallyCompressedVertexRecords.compressedVertexCoordinateArray();
-				Logger.info("=== Compressed Vertex Coordinate Array: {} vertices, {} components ===",
-						coordArray.uniqueVertexCount(), coordArray.numberComponents());
-				float[][] coords = coordArray.dequantize();
-				
-				// Launch 3D viewer to display the geometry
-				JTGeometryViewer.show(coordArray);
-			}
 		} catch (Exception e) {
 			Logger.error(e, "Failed to parse highDegreeFaceAttributeMasks/splitFace/vertexRecords");
 			Logger.error("This is likely due to incorrect offset calculation for highDegreeFaceAttributeMasks at offset {}", faceAttributeMask8.jtEndIndex());
