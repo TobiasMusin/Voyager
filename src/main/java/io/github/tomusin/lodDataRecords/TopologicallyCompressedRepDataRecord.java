@@ -92,7 +92,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 * Useful for finding the actual start of CDP data if offset is off.
 	 */
 	private static int findValidCDPOffset(BitByteBuffer buffer, int startIndex, int maxScanBytes, boolean onlyForward) {
-		Logger.info("Scanning for valid CDP header starting at byte offset {}", startIndex);
+		Logger.debug("Scanning for valid CDP header starting at byte offset {}", startIndex);
 		
 		int scanStart = Math.max(0, startIndex - maxScanBytes);
 		if (onlyForward) {
@@ -100,7 +100,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 		int scanEnd = Math.min(buffer.capacity() - 9, startIndex + maxScanBytes);
 		
-		Logger.info("  Scan range: {} to {} ({} bytes)", scanStart, scanEnd, scanEnd - scanStart);
+		Logger.debug("  Scan range: {} to {} ({} bytes)", scanStart, scanEnd, scanEnd - scanStart);
 		
 		for (int offset = scanStart; offset < scanEnd; offset++) {
 			int valueCount = buffer.getInt(offset);
@@ -127,13 +127,13 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			}
 			
 			if (looksValid) {
-				Logger.info("  ✓ Found VALID CDP at offset {}: valueCount={}, codecType={}, codeTextLength={}, distanceFromExpectedOffset={}", 
-				           offset, valueCount, codecType, codeTextLengthBits, offset - startIndex);
+				Logger.debug("  Found valid CDP at offset {}: valueCount={}, codecType={}, codeTextLength={}", 
+				           offset, valueCount, codecType, codeTextLengthBits);
 				return offset;
 			}
 		}
 		
-		Logger.warn("  ✗ No valid CDP header found in range");
+		Logger.warn("  No valid CDP header found in range");
 		return startIndex;  // Fall back to original offset
 	}
 
@@ -184,10 +184,18 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	}
 
 	static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex) {
-		return readInt32CDP(buffer, startIndex, 0, false);
+		return readInt32CDP(buffer, startIndex, 0, false, PredictorType.PredLag1);
+	}
+	
+	static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex, PredictorType predictorType) {
+		return readInt32CDP(buffer, startIndex, 0, false, predictorType);
 	}
 	
 	private static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex, int recursionDepth, boolean isOobCall) {
+		return readInt32CDP(buffer, startIndex, recursionDepth, isOobCall, PredictorType.PredLag1);
+	}
+	
+	private static VecI32 readInt32CDP(BitByteBuffer buffer, int startIndex, int recursionDepth, boolean isOobCall, PredictorType predictorType) {
 		// Prevent infinite recursion from offset scanning
 		if (recursionDepth > 8) {
 			Logger.error("readInt32CDP: Max recursion depth (8) exceeded at offset {}", startIndex);
@@ -211,8 +219,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		//   Bytes 11+:   Int32CDP (Chopped MSB Data)
 		//   Then:        Int32CDP (Chopped LSB Data)
 		
-		Logger.info("readInt32CDP called with startIndex={} bytes", startIndex);
-		Logger.info("  Buffer capacity: {} bytes", buffer.capacity());
+		Logger.debug("readInt32CDP called with startIndex={} bytes", startIndex);
+		Logger.debug("  Buffer capacity: {} bytes", buffer.capacity());
 		
 		// Bounds check for minimum header (always at least 5 bytes)
 		if (startIndex < 0 || startIndex + 5 > buffer.capacity()) {
@@ -228,7 +236,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		int codecType = buffer.get(startIndex + 4) & 0xFF;
 
 		if (valueCount == 0 && codecType == 4) {
-			Logger.info("  Empty Chopper CDP header at byte {}", startIndex);
+			Logger.debug("  Empty Chopper CDP header at byte {}", startIndex);
 
 			// Chopper can legally appear with zero values and still carry chopper metadata.
 			if (startIndex + 6 > buffer.capacity()) {
@@ -249,15 +257,14 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 		
 		if (valueCount == 0 && codecType == 5) {
-			Logger.info("  Empty MtF CDP header at byte {}", startIndex);
+			Logger.debug("  Empty MtF CDP header at byte {}", startIndex);
 			VecI32 msbData = readInt32CDP(buffer, startIndex + 5, recursionDepth + 1, false);
 			VecI32 winData = readInt32CDP(buffer, msbData.jtEndIndex(), recursionDepth + 1, false);
 			return new VecI32(0, new int[0], winData.jtEndIndex());
 		}
 		
 		if (valueCount == 0) {
-			// When valueCount is 0, only the 4-byte count field is present (no codecType or further data)
-			Logger.info("  Empty CDP at byte {}, advancing 4 bytes", startIndex);
+			Logger.debug("  Empty CDP at byte {}, advancing 4 bytes", startIndex);
 			return new VecI32(0, new int[0], startIndex + 4);
 		}
 		
@@ -284,13 +291,13 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// MtF codec consists of two nested Int32CDPs (no codeTextLength field):
 			//   1. Int32 Compressed Data Packet: Chopped MSB Data
 			//   2. Int32 Compressed Data Packet: Window Offsets
-			Logger.info("  MtF codec at byte {}: valueCount={}", startIndex, valueCount);
+			Logger.debug("  MtF codec at byte {}: valueCount={}", startIndex, valueCount);
 			
 			VecI32 choppedMsbData = readInt32CDP(buffer, startIndex + 5, recursionDepth + 1, false);
-			Logger.info("  MtF: Chopped MSB Data: count={}, endByte={}", choppedMsbData.count(), choppedMsbData.jtEndIndex());
+			Logger.debug("  MtF: Chopped MSB Data: count={}, endByte={}", choppedMsbData.count(), choppedMsbData.jtEndIndex());
 			
 			VecI32 windowOffsets = readInt32CDP(buffer, choppedMsbData.jtEndIndex(), recursionDepth + 1, false);
-			Logger.info("  MtF: Window Offsets: count={}, endByte={}", windowOffsets.count(), windowOffsets.jtEndIndex());
+			Logger.debug("  MtF: Window Offsets: count={}, endByte={}", windowOffsets.count(), windowOffsets.jtEndIndex());
 			
 			// TODO: implement actual MtF decoding using choppedMsbData + windowOffsets
 			int[] decodedData = new int[valueCount];
@@ -317,7 +324,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			int[] mergedData = new int[valueCount];
 			System.arraycopy(msbData.valueArray(), 0, mergedData, 0, Math.min(msbData.valueArray().length, valueCount));
 			
-			Logger.info("  Chopper: MSB data ends at byte {}, LSB data ends at byte {}", lsbStartByte, chopperEndByte);
+			Logger.debug("  Chopper: MSB data ends at byte {}, LSB data ends at byte {}", lsbStartByte, chopperEndByte);
 			
 			return new VecI32(valueCount, mergedData, chopperEndByte);
 		} else {
@@ -325,26 +332,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// Bytes 5-8: Length of encoded data in bits (signed 32-bit)
 			codeTextLengthBits = buffer.getInt(startIndex + 5);
 			
-			// Capture raw bytes for detailed logging
-			byte b0 = buffer.get(startIndex);
-			byte b1 = buffer.get(startIndex + 1);
-			byte b2 = buffer.get(startIndex + 2);
-			byte b3 = buffer.get(startIndex + 3);
-			byte b4 = buffer.get(startIndex + 4);
-			byte b5 = buffer.get(startIndex + 5);
-			byte b6 = buffer.get(startIndex + 6);
-			byte b7 = buffer.get(startIndex + 7);
-			byte b8 = buffer.get(startIndex + 8);
-			
-			Logger.info("CDP Header parsing at byte offset {}:", startIndex);
-			Logger.info("  Raw bytes (decimal): {} {} {} {} | {} | {} {} {} {}", 
-			           b0 & 0xFF, b1 & 0xFF, b2 & 0xFF, b3 & 0xFF, b4 & 0xFF,
-			           b5 & 0xFF, b6 & 0xFF, b7 & 0xFF, b8 & 0xFF);
-			Logger.info("  Raw bytes (hex): 0x{:02X}{:02X}{:02X}{:02X} 0x{:02X} 0x{:02X}{:02X}{:02X}{:02X}", 
-			           b0 & 0xFF, b1 & 0xFF, b2 & 0xFF, b3 & 0xFF, b4 & 0xFF,
-			           b5 & 0xFF, b6 & 0xFF, b7 & 0xFF, b8 & 0xFF);
-			Logger.info("  Parsed values: valueCount={}, codecType={}, codeTextLengthBits={}", 
-			           valueCount, codecType, codeTextLengthBits);
+			Logger.debug("CDP Header at byte offset {}: valueCount={}, codecType={}, codeTextLengthBits={}", 
+			           startIndex, valueCount, codecType, codeTextLengthBits);
 			
 			int codeTextWordBytes = ((codeTextLengthBits + 31) / 32) * 4;
 			endByte = startIndex + 9 + codeTextWordBytes;
@@ -382,8 +371,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			codeTextLengthBits = 0;
 		}
 			
-		Logger.debug("CDP Header: valueCount={}, codec={}, codeTextLengthBits={} at byteOffset={}", 
-		             valueCount, codecType, codeTextLengthBits, startIndex);
+		Logger.debug("CDP Header: valueCount={}, codec={}, codeTextLengthBits={} at byteOffset={} (depth={}, isOOB={})", 
+		             valueCount, codecType, codeTextLengthBits, startIndex, recursionDepth, isOobCall);
 			
 		// ========== CODEC DISPATCH (Standard codecs) ==========
 		int cdpHeaderBytes = 9;
@@ -407,6 +396,14 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// We need it to decode, so read it first, then decode.
 			if (!isOobCall) {
 				int probCtxStartBit = endByte * 8;
+				Logger.info("  ARITH: codeTextStartByte={}, codeTextWordBytes={}, probCtxStartByte={}, probCtxStartBit={}",
+					encodedDataStartByte, codeTextWordBytes, endByte, probCtxStartBit);
+				// Dump raw bytes at prob context start
+				Logger.info("  ARITH: raw bytes at probCtx: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+					buffer.getUnsignedByte(endByte), buffer.getUnsignedByte(endByte+1),
+					buffer.getUnsignedByte(endByte+2), buffer.getUnsignedByte(endByte+3),
+					buffer.getUnsignedByte(endByte+4), buffer.getUnsignedByte(endByte+5),
+					buffer.getUnsignedByte(endByte+6), buffer.getUnsignedByte(endByte+7));
 				Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
 				int probCtxEndBit = ctx.jtEndBitIndex();
 				int probCtxEndByte = (probCtxEndBit + 7) / 8;
@@ -457,10 +454,30 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 			
 		// ========== RESIDUAL UNPACKING ==========
-		if (codecImplemented && valueCount > 0) {
-			Logger.info("  Before Lag1: first 10 values: {}", java.util.Arrays.toString(java.util.Arrays.copyOf(decodedValues, Math.min(10, decodedValues.length))));
-			unpackResiduals(decodedValues, PredictorType.PredLag1);
-			Logger.info("  After Lag1: first 10 values: {}", java.util.Arrays.toString(java.util.Arrays.copyOf(decodedValues, Math.min(10, decodedValues.length))));
+		// OOB CDPs carry raw residuals that will be accumulated by the parent
+		// sequence's unpackResiduals — do NOT accumulate them independently.
+		if (codecImplemented && valueCount > 0 && !isOobCall) {
+			// Log residuals before unpacking around drift point
+			if (valueCount > 860) {
+				Logger.info("  PRE-UNPACK residuals [850..865]:");
+				for (int i = 850; i <= Math.min(865, valueCount - 1); i++) {
+					Logger.info("    residual[{}] = {}", i, decodedValues[i]);
+				}
+			}
+			unpackResiduals(decodedValues, predictorType);
+			// Log accumulated values after unpacking around drift point
+			if (valueCount > 860) {
+				Logger.info("  POST-UNPACK values [0..5] and [850..870] and LAST 5:");
+				for (int i = 0; i <= Math.min(5, valueCount - 1); i++) {
+					Logger.info("    value[{}] = {} (float={})", i, decodedValues[i], Float.intBitsToFloat(decodedValues[i]));
+				}
+				for (int i = 850; i <= Math.min(870, valueCount - 1); i++) {
+					Logger.info("    value[{}] = {} (float={})", i, decodedValues[i], Float.intBitsToFloat(decodedValues[i]));
+				}
+				for (int i = Math.max(871, valueCount - 5); i < valueCount; i++) {
+					Logger.info("    value[{}] = {} (float={})", i, decodedValues[i], Float.intBitsToFloat(decodedValues[i]));
+				}
+			}
 		}
 
 		// ========== TAIL STRUCTURES (after codeTextWords) ==========
@@ -475,7 +492,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 			
 		// Log the offset calculation for debugging
-		Logger.debug("CDP Offset Calculation: startIndex={}, endByte={}", startIndex, endByte);
+		Logger.trace("CDP Offset Calculation: startIndex={}, endByte={}", startIndex, endByte);
 			
 		return new VecI32((int) valueCount, decodedValues, endByte);
 	}
@@ -564,14 +581,19 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 				
 				int cCurFieldWidth = 0;
 				int ii = 0;
+				int blockNum = 0;
 				
 				while (ii < valueCount) {
 					// Step 1: Adjust field width (loop while delta is at extremes)
 					// C++ lines 522-527
 					int cDeltaFieldWidth;
+					int deltaSum = 0;
+					int deltaCount = 0;
 					do {
 						cDeltaFieldWidth = reader.readSignedBits(cBlkValBits);
 						cCurFieldWidth += cDeltaFieldWidth;
+						deltaSum += cDeltaFieldWidth;
+						deltaCount++;
 					} while (cDeltaFieldWidth == maxFieldDecr || cDeltaFieldWidth == maxFieldIncr);
 					
 					// Step 2: Read run length (unsigned, cBlkLenBits bits)
@@ -586,6 +608,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 					}
 					
 					ii += cRunLen;
+					blockNum++;
 				}
 			}
 			
@@ -673,8 +696,38 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		int totalFreq = cumFreq[numSymbols];
 		
 		Logger.info("  Arithmetic context: {} symbols, totalFreq={}, minValue={}", numSymbols, totalFreq, ctx.minValue());
-		for (int i = 0; i < Math.min(numSymbols, 10); i++) {
-			Logger.info("    Symbol {}: value={}, freq={}, escape={}", i, symbolValues[i], entries.get(i).occurrenceCount(), isEscape[i]);
+		
+		// DIAGNOSTIC: Dump first 10 and last 5 entries with cumulative frequencies
+		for (int i = 0; i < Math.min(10, numSymbols); i++) {
+			var e = entries.get(i);
+			Logger.info("  PROB_ENTRY[{}]: escape={} occ={} assocVal={} value={} cumFreq=[{},{}]",
+				i, e.isEscapeSymbol(), e.occurrenceCount(), e.associatedValue(), symbolValues[i],
+				cumFreq[i], cumFreq[i+1]);
+		}
+		for (int i = Math.max(10, numSymbols - 5); i < numSymbols; i++) {
+			var e = entries.get(i);
+			Logger.info("  PROB_ENTRY[{}]: escape={} occ={} assocVal={} value={} cumFreq=[{},{}]",
+				i, e.isEscapeSymbol(), e.occurrenceCount(), e.associatedValue(), symbolValues[i],
+				cumFreq[i], cumFreq[i+1]);
+		}
+		// Find and log escape entry
+		for (int i = 0; i < numSymbols; i++) {
+			if (isEscape[i]) {
+				Logger.info("  ESCAPE_ENTRY at sym={}: occ={} cumFreq=[{},{}]",
+					i, entries.get(i).occurrenceCount(), cumFreq[i], cumFreq[i+1]);
+				break;
+			}
+		}
+		
+		// DIAGNOSTIC: Log OOB values if present
+		if (oobValues != null) {
+			Logger.info("  OOB values: count={}", oobValues.length);
+			for (int i = 0; i < Math.min(20, oobValues.length); i++) {
+				Logger.info("  OOB[{}]: {}", i, oobValues[i]);
+			}
+			for (int i = Math.max(20, oobValues.length - 5); i < oobValues.length; i++) {
+				Logger.info("  OOB[{}]: {}", i, oobValues[i]);
+			}
 		}
 		
 		if (totalFreq == 0) {
@@ -682,36 +735,57 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return;
 		}
 		
-		// Standard Arithmetic Decoding (16-bit precision)
-		final int CODE_BITS = 16;
-		final int TOP_VALUE = (1 << CODE_BITS) - 1; // 0xFFFF
-		final int FIRST_QTR = (TOP_VALUE + 1) / 4;  // 0x4000
-		final int HALF = 2 * FIRST_QTR;              // 0x8000
-		final int THIRD_QTR = 3 * FIRST_QTR;         // 0xC000
+		// Arithmetic Decoding matching C++ _removeSymbolFromStream implementation.
+		// Uses 16-bit precision with explicit masking to prevent overflow in Java's
+		// 32-bit int (C++ uses unsigned short which naturally wraps).
+		//
+		// Reference: Arithmetic.cpp _removeSymbolFromStream / _startDecoder
+		final int MASK = 0xFFFF;  // 16-bit mask
 		
 		// Read bits from LE 32-bit code text words using CodeTextBitReader
-		// (same word-based reading as Bitlength codec)
 		int startByte = startBit / 8;
 		CodeTextBitReader ctReader = new CodeTextBitReader(buffer, startByte, lengthBits);
 		int bitsRead = 0;
 		
-		// Initialize: read first CODE_BITS bits into code register
+		// Helper to read one bit, returning 0 past end of data
+		// C++ _startDecoder: reads 16 bits to initialize code register
 		int code = 0;
-		for (int i = 0; i < CODE_BITS; i++) {
-			code = (code << 1) | ctReader.readBit();
+		for (int i = 0; i < 16; i++) {
+			int bit = (bitsRead < lengthBits) ? ctReader.readBit() : 0;
 			bitsRead++;
+			code = ((code << 1) | bit) & MASK;
 		}
 		int low = 0;
-		int high = TOP_VALUE;
+		int high = MASK; // 0xFFFF
 		
-		Logger.info("    Initial code=0x{} ({})", Integer.toHexString(code), code);
+		Logger.debug("    Initial code=0x{}", Integer.toHexString(code));
 		
 		int oobIndex = 0;
 		
+		// Debug: detect large contexts (Z coordinate context has 348 entries)
+		boolean isDebugContext = (numSymbols > 100);
+		
+		if (isDebugContext) {
+			int firstWord = buffer.getInt(startByte);
+			Logger.info("  ARITH INIT: codeTextStartByte={} firstWord=0x{} lengthBits={} code=0x{}",
+				startByte, Integer.toHexString(firstWord), lengthBits, Integer.toHexString(code));
+		}
+		
 		for (int v = 0; v < valueCount; v++) {
 			// Determine symbol from current code
-			int range = high - low + 1;
+			// C++ lookupEntryByCumCount: rescaledCode = ((code - low + 1) * total - 1) / (high - low + 1)
+			long range = (long)(high - low) + 1;
 			int cum = (int)(((long)(code - low + 1) * totalFreq - 1) / range);
+			
+			// DEBUG: Check invariant and log around drift point
+			if (isDebugContext && (v >= 850 && v <= 865 || code < low || code > high)) {
+				Logger.info("  ARITH[v={}]: code=0x{} low=0x{} high=0x{} range={} cum={} bitsRead={}",
+					v, Integer.toHexString(code), Integer.toHexString(low), Integer.toHexString(high), range, cum, bitsRead);
+			}
+			if (code < low || code > high) {
+				Logger.error("  INVARIANT VIOLATED at v={}: code=0x{} low=0x{} high=0x{}", 
+					v, Integer.toHexString(code), Integer.toHexString(low), Integer.toHexString(high));
+			}
 			
 			// Find symbol: cumFreq[sym] <= cum < cumFreq[sym+1]
 			int sym = 0;
@@ -720,12 +794,14 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			}
 			if (sym >= numSymbols) sym = numSymbols - 1;
 			
-			if (v < 4) Logger.info("    v={}: code={}, low={}, high={}, range={}, cum={}, sym={}, isEsc={}", 
-			                        v, code, low, high, range, cum, sym, isEscape[sym]);
+			// DEBUG: Log symbol selection around drift point
+			if (isDebugContext && v >= 850 && v <= 865) {
+				Logger.info("  ARITH[v={}]: sym={} cumFreq=[{},{}] val={} escape={} oobIdx={}",
+					v, sym, cumFreq[sym], cumFreq[sym+1], symbolValues[sym], isEscape[sym], oobIndex);
+			}
 			
 			// Get the value for this symbol
 			if (isEscape[sym]) {
-				// Escape symbol: get value from OOB CDP
 				if (oobValues != null && oobIndex < oobValues.length) {
 					outValues[v] = oobValues[oobIndex++];
 				} else {
@@ -735,43 +811,46 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 				outValues[v] = symbolValues[sym];
 			}
 			
-			// Update decoder state
-			high = low + (int)((long)range * cumFreq[sym + 1] / totalFreq) - 1;
-			low = low + (int)((long)range * cumFreq[sym] / totalFreq);
+			// _removeSymbolFromStream: update range then normalize
+			// C++: high = low + (range * cumHigh / total) - 1
+			//      low  = low + (range * cumLow  / total)
+			int newHigh = (low + (int)((range * cumFreq[sym + 1]) / totalFreq) - 1) & MASK;
+			int newLow  = (low + (int)((range * cumFreq[sym]) / totalFreq)) & MASK;
 			
-			// Normalize
-			while (true) {
-				if (high < HALF) {
-					// Both in lower half - shift out 0
-				} else if (low >= HALF) {
-					// Both in upper half - shift out 1
-					code -= HALF;
-					low -= HALF;
-					high -= HALF;
-				} else if (low >= FIRST_QTR && high < THIRD_QTR) {
-					// Convergence - shift out middle
-					code -= FIRST_QTR;
-					low -= FIRST_QTR;
-					high -= FIRST_QTR;
+			if (isDebugContext && v >= 850 && v <= 865) {
+				Logger.info("  ARITH[v={}]: rangeUpdate: low 0x{}->0x{} high 0x{}->0x{} val={}",
+					v, Integer.toHexString(low), Integer.toHexString(newLow),
+					Integer.toHexString(high), Integer.toHexString(newHigh), outValues[v]);
+			}
+			
+			low = newLow;
+			high = newHigh;
+			
+			// Normalize: C++ _removeSymbolFromStream loop
+			for (;;) {
+				if (((high ^ low) & 0x8000) == 0) {
+					// MSBs match (both 0 or both 1) — E1 or E2
+				} else if ((low & 0x4000) != 0 && (high & 0x4000) == 0) {
+					// E3 underflow: low = 01xx, high = 10xx
+					code ^= 0x4000;
+					low &= 0x3FFF;
+					high |= 0x4000;
 				} else {
 					break;
 				}
-				low = low << 1;
-				high = (high << 1) + 1;
-				// Read next bit (0 if past end of data)
-				int nextBit = (bitsRead < lengthBits) ? ctReader.readBit() : 0;
+				// Shift left and read next bit
+				low = (low << 1) & MASK;
+				high = ((high << 1) | 1) & MASK;
+				int bit = (bitsRead < lengthBits) ? ctReader.readBit() : 0;
 				bitsRead++;
-				code = (code << 1) | nextBit;
-				
-				// Keep values in 16-bit range
-				low &= TOP_VALUE;
-				high &= TOP_VALUE;
-				code &= TOP_VALUE;
+				code = ((code << 1) | bit) & MASK;
 			}
 		}
 		
-		Logger.info("  Arithmetic decoded: first 10 values: {}", 
-		           java.util.Arrays.toString(java.util.Arrays.copyOf(outValues, Math.min(10, outValues.length))));
+		Logger.debug("  Arithmetic decoded {} values", outValues.length);
+		Logger.info("  ARITH FINAL: oobIndex={}/{} bitsRead={}/{} ctReaderBits={}",
+			oobIndex, oobValues != null ? oobValues.length : 0,
+			bitsRead, lengthBits, ctReader.getBitsConsumed());
 	}
 
 	/**
@@ -832,7 +911,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		private final int totalBits;         // total bits in code text
 		private int wordIndex;               // current word index (0-based)
 		private int uVal;                    // current 32-bit word value (bits shift left as consumed)
-		private int nValBits;                // bits remaining in current word
+		private int nValBits;                // bits remaining in the current word
 		private int nBitsConsumed;           // total bits consumed so far
 		
 		CodeTextBitReader(BitByteBuffer buffer, int codeTextStartByte, int totalBits) {
@@ -1168,26 +1247,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		// startIndex is in BYTES (consistent with rest of codebase)
 		// readInt32CDP expects BYTES and handles bit conversion internally
 		Logger.info("===== TopologicallyCompressedRepDataRecord.fromByteBuffer =====");
-		Logger.info("Called with startIndex={} bytes", startIndex);
-		Logger.info("Buffer capacity: {} bytes", buffer.capacity());
-		Logger.info("Attempting to read first Face Degrees array at offset {}", startIndex);
-		
-		// DIAGNOSTIC: Dump bytes around the given offset
-		Logger.info("Bytes at offset {} (diagnostic):", startIndex);
-		for (int i = 0; i < 40 && startIndex + i < buffer.capacity(); i += 10) {
-			Logger.info("  +{}: 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X} 0x{:02X}",
-			           i,
-			           buffer.get(startIndex + i) & 0xFF,
-			           buffer.get(startIndex + i + 1) & 0xFF,
-			           buffer.get(startIndex + i + 2) & 0xFF,
-			           buffer.get(startIndex + i + 3) & 0xFF,
-			           buffer.get(startIndex + i + 4) & 0xFF,
-			           buffer.get(startIndex + i + 5) & 0xFF,
-			           buffer.get(startIndex + i + 6) & 0xFF,
-			           buffer.get(startIndex + i + 7) & 0xFF,
-			           buffer.get(startIndex + i + 8) & 0xFF,
-			           buffer.get(startIndex + i + 9) & 0xFF);
-		}
+		Logger.info("Called with startIndex={} bytes, buffer capacity={} bytes", startIndex, buffer.capacity());
 		
 		VecI32[] faceDegrees = new VecI32[8];
 		int byteOffset = startIndex;
@@ -1203,9 +1263,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			if (Arrays.stream(faceDegrees).filter(fd -> fd.count() == 0).count() > 0) {
 				Logger.warn("Face Degrees array 0 is empty at byte offset {}", byteOffset);
 			} else {
-				Logger.info("Successfully read Face Degrees array 0 with {} values at byte offset {}", 
-				             faceDegrees[0].count(), byteOffset);
-				System.out.println("Successfully read 8 Face Degrees arrays:");
+				Logger.info("Successfully read 8 Face Degrees arrays, first has {} values", faceDegrees[0].count());
 			}
 		} catch (Exception e) {
 			Logger.error("Failed to read Face Degrees arrays with byte offset: {}", byteOffset);
@@ -1215,8 +1273,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		// Continue with CDP-encoded arrays (all byte offsets)
 		VecI32 vertexValences = readInt32CDP(buffer, faceDegrees[7].jtEndIndex());
 		VecI32 vertexGroups = readInt32CDP(buffer, vertexValences.jtEndIndex());
-		Logger.info(vertexGroups.toString());
-		Logger.info(vertexValences.toString());
 		
 		// Remaining arrays: VecI32.fromByteBuffer takes BYTE OFFSET
 		// Get byte offset from jtEndIndex() which now returns bytes
@@ -1226,18 +1282,17 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		// Read 8 Face Attribute Masks arrays (byte offsets)
 		VecI32[] faceAttributeMasks = new VecI32[8];
 		byteOffset = vertexFlags.jtEndIndex();
-		Logger.info("=== Starting faceAttributeMasks at byte {}", byteOffset);
+		Logger.debug("=== Starting faceAttributeMasks at byte {}", byteOffset);
 		for (int i = 0; i < 8; i++) {
 			faceAttributeMasks[i] = readInt32CDP(buffer, byteOffset);
 			int nextOffset = faceAttributeMasks[i].jtEndIndex();
-			Logger.info("  faceAttributeMasks[{}]: count={}, offset {}→{}", i, faceAttributeMasks[i].count(), byteOffset, nextOffset);
+			Logger.debug("  faceAttributeMasks[{}]: count={}, offset {}→{}", i, faceAttributeMasks[i].count(), byteOffset, nextOffset);
 			byteOffset = nextOffset;
 		}
 		
 //		VecI32 faceAttributeMask8 = VecI32.fromByteBuffer(buffer, byteOffset);
-		System.out.println("TRACE: about to read faceAttributeMask8 at byteOffset=" + byteOffset);
 		VecI32 faceAttributeMask8 = readInt32CDP(buffer, byteOffset);
-		Logger.info("faceAttributeMask8 count={}, endOffset={}", faceAttributeMask8.count(), faceAttributeMask8.jtEndIndex());
+		Logger.debug("faceAttributeMask8 count={}, endOffset={}", faceAttributeMask8.count(), faceAttributeMask8.jtEndIndex());
 		VecU32 highDegreeFaceAttributeMasks = null;
 		VecI32 splitFaceSyms = null;
 		VecI32 splitFacePositions = null;
@@ -1247,18 +1302,17 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		try {
 			// Use byte-aligned read since data is LE byte-aligned
 			highDegreeFaceAttributeMasks = VecU32.fromByteBufferAligned(buffer, faceAttributeMask8.jtEndIndex());
-			Logger.info("highDegreeFaceAttributeMasks count={}, endOffset={}", highDegreeFaceAttributeMasks.count(), highDegreeFaceAttributeMasks.jtEndIndex());
+			Logger.debug("highDegreeFaceAttributeMasks count={}, endOffset={}", highDegreeFaceAttributeMasks.count(), highDegreeFaceAttributeMasks.jtEndIndex());
 			splitFaceSyms = readInt32CDP(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
-			Logger.info("splitFaceSyms count={}, endOffset={}", splitFaceSyms.count(), splitFaceSyms.jtEndIndex());
+			Logger.debug("splitFaceSyms count={}, endOffset={}", splitFaceSyms.count(), splitFaceSyms.jtEndIndex());
 			splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex());
-			Logger.info("splitFacePositions count={}, endOffset={}", splitFacePositions.count(), splitFacePositions.jtEndIndex());
+			Logger.debug("splitFacePositions count={}, endOffset={}", splitFacePositions.count(), splitFacePositions.jtEndIndex());
 			
 			// U32: CompositeHash
 			int compositeHashOffset = splitFacePositions.jtEndIndex();
-			Logger.info("TRACE: compositeHashOffset={}", compositeHashOffset);
 			
 			compositeHash = ReadFromBufferUtils.readUnsignedInt(buffer, compositeHashOffset);
-			Logger.info("CompositeHash = 0x{}", Long.toHexString(compositeHash));
+			Logger.debug("CompositeHash = 0x{}", Long.toHexString(compositeHash));
 			
 			// TopologicallyCompressedVertexRecords
 			topologicallyCompressedVertexRecords = 
@@ -1267,17 +1321,9 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// Print the dequantized vertex coordinate array
 			if (topologicallyCompressedVertexRecords.compressedVertexCoordinateArray() != null) {
 				CompressedVertexCoordinateArrayRecord coordArray = topologicallyCompressedVertexRecords.compressedVertexCoordinateArray();
-				Logger.info("=== Compressed Vertex Coordinate Array ===");
-				Logger.info("uniqueVertexCount = {}, numberComponents = {}", coordArray.uniqueVertexCount(), coordArray.numberComponents());
-				Logger.info("vertexCoordinateHash = 0x{}", Integer.toHexString(coordArray.vertexCoordinateHash()));
+				Logger.info("=== Compressed Vertex Coordinate Array: {} vertices, {} components ===",
+						coordArray.uniqueVertexCount(), coordArray.numberComponents());
 				float[][] coords = coordArray.dequantize();
-				String[] labels = {"X", "Y", "Z", "W"};
-				for (int c = 0; c < coords.length; c++) {
-					String label = c < labels.length ? labels[c] : "C" + c;
-					Logger.info("  {} coords (first 10): {}", label, 
-							java.util.Arrays.toString(java.util.Arrays.copyOf(coords[c], Math.min(10, coords[c].length))));
-				}
-				Logger.info("  Total vertices: {}", coords[0].length);
 				
 				// Launch 3D viewer to display the geometry
 				JTGeometryViewer.show(coordArray);
@@ -1454,7 +1500,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 */
 	private static void removeSymbolFromStream(ArithmeticDecoderState state, int uLowCt, int uHighCt, 
 	                                            int uScale, BitByteBuffer buffer, int startBit, int maxBits) {
-		// First, expand the range to account for symbol removal
+				// First, expand the range to account for symbol removal
 		long uRange = (long)(state.high - state.low) + 1;
 		state.high = state.low + (int)(((uRange * uHighCt) / uScale) - 1);
 		state.low = state.low + (int)((uRange * uLowCt) / uScale);

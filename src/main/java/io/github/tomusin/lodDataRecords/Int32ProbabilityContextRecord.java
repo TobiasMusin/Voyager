@@ -97,30 +97,26 @@ public record Int32ProbabilityContextRecord(
 					currentBitIndex,
 					currentBitIndex - startBitIndex);
 		} else {
-			Logger.debug("  Header fields read successfully, proceeding to read entries...");
-			// ========== STEP 2: Read Entries ==========
-			List<Int32ProbabilityContextTableEntryRecord> entries = new ArrayList<>();
-			
-			for (int i = 0; i < entryCount; i++) {
+		Logger.debug("  Header fields read successfully, proceeding to read entries...");
+		// ========== STEP 2: Read Entries ==========
+		List<Int32ProbabilityContextTableEntryRecord> entries = new ArrayList<>();
+		
+		for (int i = 0; i < entryCount; i++) {
 				Int32ProbabilityContextTableEntryRecord entry = Int32ProbabilityContextTableEntryRecord.fromBitBuffer(buffer, currentBitIndex, numberOccurrenceCountBits, numberValueBits);
 				entries.add(entry);
 				currentBitIndex += entry.getTotalBitsRead();
 				Logger.debug("  Entry {}: {}", i, entry);
 			}
 			
-			// ========== STEP 3: Handle Alignment Bits ==========
-			// All bit-level data is byte-aligned, so we need to skip any remaining bits
-			// on the current byte to arrive at the next byte boundary.
-			
-			int alignmentBits = (8 - (currentBitIndex % 8)) % 8;
-			
-			if (alignmentBits > 0) {
-				Logger.debug("  Alignment bits to skip: {}", alignmentBits);
-				currentBitIndex += alignmentBits;
-			}
-			
-			Logger.info("  End bit index (after alignment): {} (read {} bits)", 
-					currentBitIndex, currentBitIndex - startBitIndex);
+		// ========== STEP 3: Handle Alignment Bits ==========
+		int alignmentBits = (8 - (currentBitIndex % 8)) % 8;
+		if (alignmentBits > 0) {
+			Logger.debug("  Alignment bits to skip: {}", alignmentBits);
+			currentBitIndex += alignmentBits;
+		}
+		
+		Logger.info("  End bit index (after alignment): {} (read {} bits)", 
+				currentBitIndex, currentBitIndex - startBitIndex);
 			
 			result = new Int32ProbabilityContextRecord(
 					entryCount,

@@ -33,6 +33,8 @@ public record CompressedVertexCoordinateArrayRecord(
 				+ pointQuantizerData.yUniformQuantizerData().numberOfBits() 
 				+ pointQuantizerData.zUniformQuantizerData().numberOfBits();
 		
+		Logger.info("  quantBits X: {}, Y: {}, Z: {}, total: {}", pointQuantizerData.xUniformQuantizerData().numberOfBits(), pointQuantizerData.yUniformQuantizerData().numberOfBits(), pointQuantizerData.zUniformQuantizerData().numberOfBits(), quantBits);
+		
 		VecI32[] vertexCoordCords = null;
 		VecI32[] binaryVertexCoords = null;
 		
@@ -50,8 +52,7 @@ public record CompressedVertexCoordinateArrayRecord(
 			for (int i = 0; i < numberComponents; i++) {
 				binaryVertexCoords[i] = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, nextOffset);
 				nextOffset = binaryVertexCoords[i].jtEndIndex();
-				Logger.info("  binaryVertexCoords[{}]: count={}, values={}, nextOffset={}", i, binaryVertexCoords[i].count(), 
-						java.util.Arrays.toString(binaryVertexCoords[i].valueArray()), nextOffset);
+				Logger.info("  binaryVertexCoords[{}]: count={}, nextOffset={}", i, binaryVertexCoords[i].count(), nextOffset);
 			}
 		} else {
 			Logger.error("Something went wrong when checking the number of QuantBits.");
@@ -96,6 +97,31 @@ public record CompressedVertexCoordinateArrayRecord(
 				result[c] = new float[codes.length];
 				for (int i = 0; i < codes.length; i++) {
 					result[c][i] = Float.intBitsToFloat(codes[i]);
+				}
+			}
+		}
+		// Diagnostic: find first invalid Z value
+		if (result.length >= 3 && result[2] != null) {
+			float zMin = pointQuantizerData.zUniformQuantizerData().min();
+			float zMax = pointQuantizerData.zUniformQuantizerData().max();
+			float margin = 0.01f; // Tight margin
+			// Log last 5 Z values
+			int zLen = result[2].length;
+			for (int j = Math.max(0, zLen - 5); j < zLen; j++) {
+				int raw = binaryVertexCoords != null ? binaryVertexCoords[2].valueArray()[j] : 0;
+				Logger.info("  Z_LAST[{}]: float={}, raw=0x{} ({})", j, result[2][j], Integer.toHexString(raw), raw);
+			}
+			for (int i = 0; i < result[2].length; i++) {
+				float z = result[2][i];
+				if (Float.isNaN(z) || Float.isInfinite(z) || z < zMin - margin || z > zMax + margin) {
+					Logger.info("FIRST_BAD_Z at index {}: z={}, raw_int=0x{}", i, z,
+						binaryVertexCoords != null ? Integer.toHexString(binaryVertexCoords[2].valueArray()[i]) : "quantized");
+					// Log surrounding values
+					for (int j = Math.max(0, i - 5); j <= Math.min(result[2].length - 1, i + 5); j++) {
+						int raw = binaryVertexCoords != null ? binaryVertexCoords[2].valueArray()[j] : 0;
+						Logger.info("  Z[{}]: float={}, raw=0x{} ({})", j, result[2][j], Integer.toHexString(raw), raw);
+					}
+					break;
 				}
 			}
 		}

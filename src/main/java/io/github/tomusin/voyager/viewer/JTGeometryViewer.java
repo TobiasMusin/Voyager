@@ -87,9 +87,9 @@ public class JTGeometryViewer {
         // Log vertex data for debugging
         int n = coords[0].length;
         System.out.println("=== JTGeometryViewer: " + n + " vertices ===");
-        for (int i = 0; i < n; i++) {
-            System.out.printf("  v[%d] = (%.4f, %.4f, %.4f)%n", i, coords[0][i], coords[1][i], coords[2][i]);
-        }
+//        for (int i = 0; i < n; i++) {
+//            System.out.printf("  v[%d] = (%.4f, %.4f, %.4f)%n", i, coords[0][i], coords[1][i], coords[2][i]);
+//        }
         init();
         uploadGeometry(coords);
         loop();
@@ -258,9 +258,11 @@ public class JTGeometryViewer {
             glViewport(0, 0, w[0], h[0]);
             float aspect = (float) w[0] / Math.max(h[0], 1);
 
-            Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(45), aspect, 0.1f, 1000f);
+            float camDist = extent * zoom;
+            Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(45), aspect,
+                    camDist * 0.01f, camDist * 10f);
             Matrix4f view = new Matrix4f()
-                    .translate(0, 0, -extent * zoom)
+                    .translate(0, 0, -camDist)
                     .rotateX((float) Math.toRadians(rotX))
                     .rotateY((float) Math.toRadians(rotY))
                     .translate(-cx, -cy, -cz);
