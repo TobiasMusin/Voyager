@@ -5,13 +5,15 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.tinylog.Logger;
 import org.tinylog.configuration.Configuration;
 
-import io.github.tomusin.lodDataRecords.CompressedVertexCoordinateArrayRecord;
+import io.github.tomusin.voyager.CliArgs.Mode;
 import io.github.tomusin.voyager.datastructures.TreeNode;
 import io.github.tomusin.voyager.export.GltfExporter;
 import io.github.tomusin.voyager.readers.JTReader;
@@ -19,90 +21,50 @@ import io.github.tomusin.voyager.viewer.JTGeometryViewer;
 
 public class Main {
 
-	private enum Mode { PARSE, RENDER, EXPORT }
+	private record FileResult(String path, JTReader reader) {}
 
 	public static void main(String[] args) {
-		if (args.length == 0) {
-			printUsage();
-			System.exit(1);
-		}
 
-		// Parse flags
-		Mode mode = Mode.PARSE;
-		String logLevel = "WARN";
-		boolean useParallel = false;
-		String outputFile = "output.gltf";
-		Set<String> filePaths = new LinkedHashSet<>();
+		CliArgs cli = CliArgs.parse(args);
 
-		for (int i = 0; i < args.length; i++) {
-			switch (args[i].toLowerCase()) {
-				case "--render", "-r" -> mode = Mode.RENDER;
-				case "--export", "-e" -> mode = Mode.EXPORT;
-				case "--parse", "-p" -> mode = Mode.PARSE;
-				case "--parallel" -> useParallel = true;
-				case "--verbose", "-v" -> logLevel = "INFO";
-				case "--output", "-o" -> {
-					if (i + 1 < args.length) outputFile = args[++i];
-					else { System.err.println("--output requires a file path"); System.exit(1); }
-				}
-				default -> {
-					Path path = Path.of(args[i]);
-					if (Files.isDirectory(path)) {
-						try (DirectoryStream<Path> stream = Files.newDirectoryStream(path, "*.jt")) {
-							for (Path file : stream) filePaths.add(file.toAbsolutePath().toString());
-						} catch (IOException ex) {
-							System.err.println("Error reading directory: " + path + " (" + ex.getMessage() + ")");
-						}
-					} else if (Files.isRegularFile(path) && path.toString().toLowerCase().endsWith(".jt")) {
-						filePaths.add(path.toAbsolutePath().toString());
-					} else {
-						System.err.println("Skipping: " + args[i] + " (not a .jt file or directory)");
-					}
+		// Configure logging early so subsequent messages use Logger
+		Configuration.set("level", cli.logLevel());
+
+		if (cli.outputFile() != null) {
+			Path outPath = Path.of(cli.outputFile());
+			boolean treatAsDir = cli.filePaths().size() > 1 || cli.outputFile().endsWith("/") || cli.outputFile().endsWith("\\") || Files.isDirectory(outPath);
+			if (treatAsDir && !Files.isDirectory(outPath)) {
+				Path parent = outPath.getParent();
+				if (parent != null && Files.isDirectory(parent)) {
+					try { Files.createDirectory(outPath); }
+					catch (IOException e) { Logger.error("Failed to create output directory: {}", e.getMessage()); System.exit(1); }
+				} else {
+					Logger.error("--output parent directory does not exist: {}", outPath);
+					System.exit(1);
 				}
 			}
 		}
 
-		if (filePaths.isEmpty()) {
-			System.err.println("No .jt files specified.");
-			printUsage();
-			System.exit(1);
-		}
-
-		// Configure logging
-		try {
-			Class.forName("org.tinylog.Configuration");
-			Configuration.set("level", logLevel);
-		} catch (ClassNotFoundException ignored) {}
-
-		run(filePaths, mode, useParallel, outputFile);
+		System.exit(run(cli));
 	}
 
-	private static void printUsage() {
-		System.out.println("""
-			Usage: voyager [options] <file.jt | directory> [...]
+	private static int run(CliArgs cli) {
+		List<FileResult> results = new ArrayList<>();
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 
-			Modes (default: --parse):
-			  -p, --parse     Parse and print geometry summary only
-			  -r, --render    Parse and open 3D viewer
-			  -e, --export    Parse and export to glTF file
-
-			Options:
-			  -v, --verbose   Enable INFO-level logging
-			  -o, --output F  Output file path for --export (default: output.gltf)
-			  --parallel      Read multiple files in parallel
-			""");
-	}
-
-	private static void run(Set<String> filePaths, Mode mode, boolean useParallel, String outputFile) {
-		JTReader jtReader = new JTReader();
-
-		// Read files
-		if (useParallel) {
+		if (cli.parallel()) {
 			List<Thread> threads = new ArrayList<>();
-			for (String filePath : filePaths) {
+			for (String filePath : cli.filePaths()) {
+				JTReader reader = new JTReader();
+				results.add(new FileResult(filePath, reader));
 				Thread t = Thread.ofVirtual().start(() -> {
-					System.out.println("Reading: " + filePath);
-					jtReader.startReading(Path.of(filePath));
+					try {
+						Logger.info("Reading: {}", filePath);
+						reader.startReading(Path.of(filePath));
+					} catch (Exception e) {
+						Logger.error(e, "Failed to read: {}", filePath);
+						errors.add(e);
+					}
 				});
 				threads.add(t);
 			}
@@ -112,50 +74,82 @@ public class Main {
 				}
 			}
 		} else {
-			for (String filePath : filePaths) {
-				System.out.println("Reading: " + filePath);
-				jtReader.startReading(Path.of(filePath));
+			for (String filePath : cli.filePaths()) {
+				Logger.info("Reading: {}", filePath);
+				JTReader reader = new JTReader();
+				try {
+					reader.startReading(Path.of(filePath));
+				} catch (Exception e) {
+					Logger.error(e, "Failed to read: {}", filePath);
+					errors.add(e);
+					continue;
+				}
+				results.add(new FileResult(filePath, reader));
 			}
 		}
 
-		List<TreeNode> roots = jtReader.getRootNodes();
-		if (roots.isEmpty()) {
-			System.out.println("No scene graph found.");
-			return;
+		if (!errors.isEmpty())
+			Logger.warn("{} file(s) failed to read", errors.size());
+
+		List<TreeNode> allRoots = new ArrayList<>();
+		for (FileResult r : results) allRoots.addAll(r.reader().getRootNodes());
+
+		if (allRoots.isEmpty()) {
+			Logger.warn("No scene graph found.");
+			return 1;
 		}
 
-		// Print geometry summary (always)
-		for (TreeNode root : roots) {
-			for (TreeNode node : root.findNodesWithGeometry()) {
+		// Collect geometry nodes once
+		List<TreeNode> allGeoNodes = new ArrayList<>();
+		for (TreeNode root : allRoots) allGeoNodes.addAll(root.findNodesWithGeometry());
+
+		// Print geometry summary in PARSE mode, or when verbose
+		if (cli.mode() == Mode.PARSE || cli.verbose()) {
+			for (TreeNode node : allGeoNodes) {
 				float[][] coords = node.getVertexCoordinates();
 				System.out.printf("Node %d (%s): %d vertices%n",
 						node.objectID, node.nodeName, coords != null ? coords[0].length : 0);
 			}
 		}
 
-		switch (mode) {
+		switch (cli.mode()) {
 			case RENDER -> {
-				// Find first node with geometry and render it
-				for (TreeNode root : roots) {
-					List<TreeNode> geoNodes = root.findNodesWithGeometry();
-					if (!geoNodes.isEmpty()) {
-						CompressedVertexCoordinateArrayRecord coordArray = geoNodes.getFirst().getCompressedVertexCoordinateArray();
-						if (coordArray != null) {
-							JTGeometryViewer.show(coordArray);
-							return;
-						}
-					}
+				if (!allGeoNodes.isEmpty()) {
+					JTGeometryViewer.showAll(allGeoNodes);
+				} else {
+					Logger.warn("No renderable geometry found.");
+					return 1;
 				}
-				System.out.println("No renderable geometry found.");
 			}
 			case EXPORT -> {
-				try {
-					GltfExporter.export(roots, Path.of(outputFile));
-				} catch (IOException e) {
-					System.err.println("Failed to export glTF: " + e.getMessage());
+				Path outDir = cli.outputFile() != null ? Path.of(cli.outputFile()) : null;
+				boolean outIsDir = outDir != null && Files.isDirectory(outDir);
+				if (outDir != null && !outIsDir && results.size() == 1) {
+					try {
+						GltfExporter.export(allRoots, outDir);
+					} catch (IOException e) {
+						Logger.error(e, "Failed to export glTF: {}", e.getMessage());
+						return 1;
+					}
+				} else {
+					for (FileResult r : results) {
+						List<TreeNode> roots = r.reader().getRootNodes();
+						if (roots.isEmpty()) continue;
+						Path inputPath = Path.of(r.path());
+						String baseName = inputPath.getFileName().toString().replaceFirst("\\.[^.]+$", "");
+						Path parent = outDir != null ? outDir : inputPath.getParent();
+						Path gltfPath = parent.resolve(baseName + ".gltf");
+						try {
+							GltfExporter.export(roots, gltfPath);
+						} catch (IOException e) {
+							Logger.error(e, "Failed to export {}", gltfPath);
+							return 1;
+						}
+					}
 				}
 			}
 			case PARSE -> { /* already printed summary above */ }
 		}
+		return errors.isEmpty() ? 0 : 1;
 	}
 }

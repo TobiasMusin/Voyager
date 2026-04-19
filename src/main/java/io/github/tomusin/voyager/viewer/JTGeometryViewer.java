@@ -73,6 +73,47 @@ public class JTGeometryViewer {
     }
 
     /**
+     * Launch the viewer with all geometry from the given tree nodes.
+     * Merges all vertex arrays into a single combined point cloud.
+     */
+    public static void showAll(java.util.List<io.github.tomusin.voyager.datastructures.TreeNode> geometryNodes) {
+        if (geometryNodes.isEmpty()) {
+            System.out.println("No geometry nodes to render.");
+            return;
+        }
+
+        // Collect all coordinate arrays
+        java.util.List<float[][]> allCoords = new java.util.ArrayList<>();
+        int totalVertices = 0;
+        for (var node : geometryNodes) {
+            float[][] coords = node.getVertexCoordinates();
+            if (coords != null && coords.length >= 3 && coords[0].length > 0) {
+                allCoords.add(coords);
+                totalVertices += coords[0].length;
+            }
+        }
+
+        if (allCoords.isEmpty()) {
+            System.out.println("No vertex data found in geometry nodes.");
+            return;
+        }
+
+        // Merge into single float[3][totalVertices]
+        float[][] merged = new float[3][totalVertices];
+        int offset = 0;
+        for (float[][] coords : allCoords) {
+            int n = coords[0].length;
+            System.arraycopy(coords[0], 0, merged[0], offset, n);
+            System.arraycopy(coords[1], 0, merged[1], offset, n);
+            System.arraycopy(coords[2], 0, merged[2], offset, n);
+            offset += n;
+        }
+
+        System.out.printf("Rendering %d geometry nodes, %d total vertices%n", allCoords.size(), totalVertices);
+        new JTGeometryViewer().launchWithCoords(merged);
+    }
+
+    /**
      * Launch the viewer with geometry from a parsed {@link CompressedVertexCoordinateArrayRecord}.
      */
     public static void show(CompressedVertexCoordinateArrayRecord coordArray) {
