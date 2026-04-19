@@ -48,46 +48,32 @@ public record Int32ProbabilityContextRecord(
 			int startBitIndex,
 			Integer valueBitsFromFirstContext) {
 		
-		Logger.info("Int32ProbabilityContextRecord.fromBitBuffer: startBitIndex={}", startBitIndex);
-		
 		int currentBitIndex = startBitIndex;
 		
-		// ========== STEP 1: Read Header Fields (JT Specification) ==========
-		
-		// Read: U32{16} - Probability Context Table Entry Count
 		int entryCount = buffer.readBitsAt(currentBitIndex, 16);
 		currentBitIndex += 16;
-		Logger.info("  Entry Count: {}", entryCount);
 		
-		// Read: U32{6} - Number Occurrence Count Bits
 		int numberOccurrenceCountBits = buffer.readBitsAt(currentBitIndex, 6);
 		currentBitIndex += 6;
-		Logger.info("  Number Occurrence Count Bits: {}", numberOccurrenceCountBits);
 		
-		// Read: U32{7} - Number Value Bits
-		// Note: Only read if this is the first context table.
-		// If not first, use the valueBits from the first context.
 		int numberValueBits;
 		if (valueBitsFromFirstContext != null) {
-			// This is not the first context table - skip reading valueBits
 			numberValueBits = valueBitsFromFirstContext;
-			Logger.info("  Number Value Bits (from first context): {}", numberValueBits);
 		} else {
-			// This is the first context table - read valueBits
 			numberValueBits = buffer.readUnsignedBitsAt(currentBitIndex, 7);
 			currentBitIndex += 7;
-			Logger.info("  Number Value Bits: {}", numberValueBits);
 		}
 		
-		// Read: U32{32} - Min Value
 		int minValue = buffer.readBitsAt(currentBitIndex, 32);
 		currentBitIndex += 32;
-		Logger.info("  Min Value: {}", minValue);
+		
+		Logger.debug("ProbCtx: entryCount={}, occBits={}, valBits={}, minValue={}", 
+				entryCount, numberOccurrenceCountBits, numberValueBits, minValue);
 		
 		Int32ProbabilityContextRecord result;
 		if ( numberOccurrenceCountBits < 0 || numberOccurrenceCountBits > 32
 				|| numberValueBits < 0 || numberValueBits > 32) {
-			Logger.warn("  WARNING: numberOccurrenceCountBits {} is out of expected range [0, 32]", numberOccurrenceCountBits);
+			Logger.warn("ProbCtx: invalid bit widths: occBits={}, valBits={}", numberOccurrenceCountBits, numberValueBits);
 			result = new Int32ProbabilityContextRecord(
 					entryCount,
 					numberOccurrenceCountBits,
@@ -97,27 +83,19 @@ public record Int32ProbabilityContextRecord(
 					currentBitIndex,
 					currentBitIndex - startBitIndex);
 		} else {
-		Logger.debug("  Header fields read successfully, proceeding to read entries...");
-		// ========== STEP 2: Read Entries ==========
 		List<Int32ProbabilityContextTableEntryRecord> entries = new ArrayList<>();
 		
 		for (int i = 0; i < entryCount; i++) {
 				Int32ProbabilityContextTableEntryRecord entry = Int32ProbabilityContextTableEntryRecord.fromBitBuffer(buffer, currentBitIndex, numberOccurrenceCountBits, numberValueBits);
 				entries.add(entry);
 				currentBitIndex += entry.getTotalBitsRead();
-				Logger.debug("  Entry {}: {}", i, entry);
 			}
 			
-		// ========== STEP 3: Handle Alignment Bits ==========
 		int alignmentBits = (8 - (currentBitIndex % 8)) % 8;
 		if (alignmentBits > 0) {
-			Logger.debug("  Alignment bits to skip: {}", alignmentBits);
 			currentBitIndex += alignmentBits;
 		}
 		
-		Logger.info("  End bit index (after alignment): {} (read {} bits)", 
-				currentBitIndex, currentBitIndex - startBitIndex);
-			
 			result = new Int32ProbabilityContextRecord(
 					entryCount,
 					numberOccurrenceCountBits,
@@ -131,13 +109,11 @@ public record Int32ProbabilityContextRecord(
 		
 		// ========== STEP 4: Validate the record ==========
 		int bufferCapacityBits = buffer.capacity() * 8;
-		if (result.isValid(bufferCapacityBits)) {
-			Logger.debug("  VALID: Int32ProbabilityContextRecord is valid");
-		} else {
-			Logger.warn("  Int32ProbabilityContextRecord is INVALID, attempting to find valid offset...");
+		if (!result.isValid(bufferCapacityBits)) {
+			Logger.warn("ProbCtx: record is INVALID, attempting to find valid offset...");
 			Integer offsetDiff = scanForValidOffset(buffer, startBitIndex, 512);
 			if (offsetDiff != Integer.MAX_VALUE) {
-				Logger.warn("  Found possibly valid offset at {} bits from current position", offsetDiff);
+				Logger.warn("ProbCtx: found possibly valid offset at {} bits from current position", offsetDiff);
 			}
 		}
 		

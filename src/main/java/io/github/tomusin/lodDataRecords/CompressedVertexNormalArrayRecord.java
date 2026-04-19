@@ -24,8 +24,8 @@ public record CompressedVertexNormalArrayRecord(
 		int numberComponents = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 4);
 		int quantizationBits = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex + 5);
 		
-		Logger.info("CompressedVertexNormalArray: normalCount={}, numberComponents={}, quantizationBits={}, startIndex={}", 
-				normalCount, numberComponents, quantizationBits, startIndex);
+		Logger.debug("CompressedVertexNormalArray: normalCount={}, numberComponents={}, quantizationBits={}", 
+				normalCount, numberComponents, quantizationBits);
 		
 		// Sanity check to prevent OOM from wrong offsets
 		if (normalCount < 0 || normalCount > 1_000_000 || numberComponents < 0 || numberComponents > 4) {
