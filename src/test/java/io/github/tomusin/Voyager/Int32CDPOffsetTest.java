@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Test;
 
+import io.github.tomusin.voyager.CliArgs;
 import io.github.tomusin.voyager.Main;
 
 /**
@@ -23,23 +26,29 @@ class Int32CDPOffsetTest {
 
     @Test
     void externalJtFileParsesWithoutValidationErrors() {
-        String[] captured = captureLog(() -> Main.main(new String[]{
+        String[] captured = captureLog(() -> Main.run(buildCliArgs(
                 "INFO",
                 "C:\\EigeneProgramme\\Test-JTs\\small_tire105_1.jt"
-        }));
+        )));
         assertNoValidationErrors(captured);
     }
 
     @Test
     void workspaceJtFileParsesWithoutValidationErrors() {
-        String[] captured = captureLog(() -> Main.main(new String[]{
+        String[] captured = captureLog(() -> Main.run(buildCliArgs(
                 "INFO",
                 "E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt"
-        }));
+        )));
         assertNoValidationErrors(captured);
     }
 
     // ---- helpers ----
+
+    private static CliArgs buildCliArgs(String logLevel, String filePath) {
+        Set<String> filePaths = new LinkedHashSet<>();
+        filePaths.add(filePath);
+        return new CliArgs(CliArgs.Mode.PARSE, logLevel, false, true, null, filePaths);
+    }
 
     private static void assertNoValidationErrors(String[] lines) {
         StringBuilder errors = new StringBuilder();

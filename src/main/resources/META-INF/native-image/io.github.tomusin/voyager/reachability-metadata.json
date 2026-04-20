@@ -49,6 +49,26 @@
           "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "org.lwjgl.system.Library"
+    },
+    {
+      "type": "org.lwjgl.system.SharedLibraryLoader"
+    },
+    {
+      "type": "org.lwjgl.system.MemoryUtil"
+    },
+    {
+      "type": "org.lwjgl.system.Callback"
+    },
+    {
+      "type": "org.lwjgl.system.Platform",
+      "allPublicMethods": true
+    },
+    {
+      "type": "org.lwjgl.opengl.GL",
+      "allPublicMethods": true
     }
   ],
   "resources": [
@@ -69,6 +89,24 @@
     },
     {
       "glob": "tinylog.properties"
+    },
+    {
+      "glob": "windows/x64/org/lwjgl/**"
+    },
+    {
+      "glob": "windows/x64/org/lwjgl/lwjgl.dll"
+    },
+    {
+      "glob": "windows/x64/org/lwjgl/glfw/lwjgl_glfw.dll"
+    },
+    {
+      "glob": "windows/x64/org/lwjgl/opengl/lwjgl_opengl.dll"
+    },
+    {
+      "glob": "**/lwjgl*.dll"
+    },
+    {
+      "glob": "**/glfw*.dll"
     }
   ],
   "bundles": [],

@@ -209,7 +209,10 @@
 								<buildArg>-H:+RemoveUnusedSymbols</buildArg>
 								<buildArg>-H:GenerateDebugInfo=0</buildArg>
 								<buildArg>-H:IncludeResources=tinylog\\.properties</buildArg>
+								<buildArg>-H:IncludeResources=windows/x64/org/lwjgl/.*\\.dll$</buildArg>
+								<buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
 								<buildArg>--initialize-at-build-time=io.github.tomusin</buildArg>
+								<buildArg>--initialize-at-run-time=org.lwjgl</buildArg>
 							</buildArgs>
 						</configuration>
 					</plugin>

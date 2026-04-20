@@ -87,9 +87,10 @@ class TopologicallyCompressedVertexRecordsTest {
 
     @Test
     void fullPipelineRunsWithoutException() {
-        assertDoesNotThrow(() -> Main.main(new String[] {
-                "INFO",
-                "E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt"
-        }));
+        java.util.Set<String> filePaths = new java.util.LinkedHashSet<>();
+        filePaths.add("E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt");
+        assertDoesNotThrow(() -> Main.run(
+                new io.github.tomusin.voyager.CliArgs(io.github.tomusin.voyager.CliArgs.Mode.PARSE, "INFO", false, true, null, filePaths)
+        ));
     }
 }

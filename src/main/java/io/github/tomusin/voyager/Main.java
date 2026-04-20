@@ -48,7 +48,19 @@ public class Main {
 		System.exit(run(cli));
 	}
 
-	private static int run(CliArgs cli) {
+	public static int run(CliArgs cli) {
+		// When running as a native image, set LWJGL library path to the directory
+		// containing the executable so it can find the shipped DLLs.
+		if (System.getProperty("org.graalvm.nativeimage.imagecode") != null
+				&& System.getProperty("org.lwjgl.librarypath") == null) {
+			try {
+				Path exeDir = Path.of(ProcessHandle.current().info().command().orElse(".")).getParent();
+				if (exeDir != null) {
+					System.setProperty("org.lwjgl.librarypath", exeDir.toAbsolutePath().toString());
+				}
+			} catch (Exception ignored) { /* best-effort */ }
+		}
+
 		List<FileResult> results = new ArrayList<>();
 		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 
