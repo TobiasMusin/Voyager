@@ -32,7 +32,7 @@ public class JTReader {
 	
 	// Seems most writers ignore the U64 Segment offset and write I32 instead
 	// Also 9.5 seems to have some problems for me, maybe documentation changed? -> investigate and fix later
-	private static Set<String> writersThatWriteI32SegmentOffset = Set.of("Version 10.5 JT  DM 10.3.1.2", "Version 10.3 JT  DM 9.4.0.0", "Version 9.5 JT  DM 8.0.7.0", "Version 10.5 JT  DM 10.6.0.3");
+	private static Set<String> writersThatWriteI32SegmentOffset = Set.of("Version 10.5 JT  DM 10.3.1.2", "Version 10.3 JT  DM 9.4.0.0", "Version 9.5 JT  DM 8.0.7.0", "Version 10.5 JT  DM 10.6.0.3", "Version 10.6 JT  DM 10.5.0.0");
 	private String strippedVersionString;
 	private ByteOrder fileByteOrder;
 
@@ -61,6 +61,10 @@ public class JTReader {
 	    try (RandomAccessFile file = new RandomAccessFile(filename.toAbsolutePath().toString(), "r");
 	         FileChannel fileChannel = file.getChannel()) {
 
+	        // Reset state from previous file reads
+	        lsgSegment = null;
+	        shapeLOD0Segments.clear();
+	        
 	        // Map the file into memory
 	        MappedByteBuffer buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
 	        setFileHeaderRecordFromFile(buffer);
