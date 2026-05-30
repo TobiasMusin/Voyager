@@ -5,16 +5,20 @@ import java.nio.ByteBuffer;
 import org.tinylog.Logger;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
-import io.github.tomusin.voyager.datastructures.VecU32;
+import io.github.tomusin.voyager.datastructures.VecI32;
 import io.github.tomusin.voyager.utils.BitByteBuffer;
 import io.github.tomusin.voyager.utils.ReadFromBufferUtils;
 
+/**
+ * Compressed vertex normal array.
+ * Uses byte-aligned Int32CDP (not VecU32) to maintain consistent byte offsets with the rest of the pipeline.
+ */
 public record CompressedVertexNormalArrayRecord(
 		int normalCount,
 		int numberComponents,
 		int quantizationBits,
-		VecU32[] binaryVertexNormals,
-		VecU32[] deeringNormalCodes,
+		VecI32[] binaryVertexNormals,
+		VecI32[] deeringNormalCodes,
 		long vertexNormalHash,
 		int jtEndIndex
 		) implements BufferDeserializable {
@@ -33,25 +37,32 @@ public record CompressedVertexNormalArrayRecord(
 					normalCount, numberComponents, startIndex);
 			return new CompressedVertexNormalArrayRecord(0, 0, 0, null, null, 0, startIndex + 6);
 		}
-		VecU32[] binaryVertexNormals = null;
-		VecU32[] deeringNormalCodes = null;
+		VecI32[] binaryVertexNormals = null;
+		VecI32[] deeringNormalCodes = null;
 		int nextVectorStartIndex = startIndex + 6;
 		if (quantizationBits == 0) {
-			binaryVertexNormals = new VecU32[numberComponents];
+			binaryVertexNormals = new VecI32[numberComponents];
 			for (int i = 0; i < numberComponents; i++) {
-				binaryVertexNormals[i] = VecU32.fromByteBuffer(buffer, nextVectorStartIndex);
+				binaryVertexNormals[i] = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, nextVectorStartIndex);
 				nextVectorStartIndex = binaryVertexNormals[i].jtEndIndex();
 			}
 		} else if (quantizationBits > 0) {
-			deeringNormalCodes = new VecU32[numberComponents];
+			deeringNormalCodes = new VecI32[numberComponents];
 			for (int i = 0; i < numberComponents; i++) {
-				deeringNormalCodes[i] = VecU32.fromByteBuffer(buffer, nextVectorStartIndex);
+				deeringNormalCodes[i] = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, nextVectorStartIndex);
 				nextVectorStartIndex = deeringNormalCodes[i].jtEndIndex();
 			}
 		} else {
 			Logger.error("Something went wrong when checking the number of QuantBits. Maybe you are at the wrong buffer index.");
 		}
-		long vertexNormalHash = ReadFromBufferUtils.readUnsignedInt(buffer, nextVectorStartIndex);
-		return new CompressedVertexNormalArrayRecord(normalCount, numberComponents, quantizationBits, binaryVertexNormals, deeringNormalCodes, vertexNormalHash, nextVectorStartIndex + 4);
+		// vertexNormalHash must be read at byte-aligned position after CDPs (which consume variable amounts of data)
+		// Ensure byte alignment: round up to next multiple of 4
+		int hashByteOffset = nextVectorStartIndex;
+		if (hashByteOffset % 4 != 0) {
+			hashByteOffset = ((hashByteOffset / 4) + 1) * 4;
+			Logger.debug("Aligning vertexNormalHash read from byte {} to byte {}", nextVectorStartIndex, hashByteOffset);
+		}
+		long vertexNormalHash = ReadFromBufferUtils.readUnsignedInt(buffer, hashByteOffset);
+		return new CompressedVertexNormalArrayRecord(normalCount, numberComponents, quantizationBits, binaryVertexNormals, deeringNormalCodes, vertexNormalHash, hashByteOffset + 4);
 	}
 }
