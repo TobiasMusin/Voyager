@@ -88,3 +88,11 @@ nb-configuration.xml
 ## Logs and Miscellaneous
 ##############################
 *.log
+
+##############################
+## Sample / Test Data
+##############################
+# All resource files (jt, stp, images, json dumps, cpp reference snippets)
+# are kept locally only and must not be committed to the public repository.
+src/main/resources/
+src/main/java/io/github/tomusin/codec/
