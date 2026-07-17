@@ -11,8 +11,11 @@ import io.github.tomusin.voyager.Main;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Path;
 
 class TopologicallyCompressedVertexRecordsTest {
+
+    private static final Path EXAMPLE_FILE = workspacePath("src", "main", "resources", "example_block_jt10.3.jt");
 
     @Test
     void pointQuantizerDataOffsetsAreChained() {
@@ -88,9 +91,13 @@ class TopologicallyCompressedVertexRecordsTest {
     @Test
     void fullPipelineRunsWithoutException() {
         java.util.Set<String> filePaths = new java.util.LinkedHashSet<>();
-        filePaths.add("E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt");
+        filePaths.add(EXAMPLE_FILE.toAbsolutePath().toString());
         assertDoesNotThrow(() -> Main.run(
                 new io.github.tomusin.voyager.CliArgs(io.github.tomusin.voyager.CliArgs.Mode.PARSE, "INFO", false, true, null, filePaths)
         ));
+    }
+
+    private static Path workspacePath(String first, String... more) {
+        return Path.of(first, more).toAbsolutePath().normalize();
     }
 }

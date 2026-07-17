@@ -93,7 +93,7 @@ public class JTReader {
 	        linkGeometryToTree();
 
 	    } catch (Exception e) {
-	        e.printStackTrace();
+	        Logger.error(e, "Failed to read file: {}", filename);
 	    }
 	    long endTime = System.nanoTime();
 	    Logger.info("Total time: {} ms", (endTime - startTime) / 1_000_000);
@@ -196,35 +196,6 @@ public class JTReader {
 		}
 	}
 	
-	 public static void findMagicNumber(MappedByteBuffer buffer, int startIndex) {
-	        // Define the magic number sequence
-	        byte[] magicNumber = {(byte) 0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00};
-	        int magicLength = magicNumber.length;
-
-	        // Scan the buffer for the magic number
-	        for (int i = Math.max(0, startIndex - 1000); i <= Math.min(buffer.limit() - magicLength, startIndex + 1000); i++) {
-	            boolean found = true;
-	            for (int j = 0; j < magicLength; j++) {
-	                if (buffer.get(i + j) != magicNumber[j]) {
-	                    found = false;
-	                    break;
-	                }
-	            }
-	            if (found) {
-	                int difference = i - startIndex;
-	                System.out.printf("Magic number found at index: %d%n", i);
-	                System.out.printf("Difference to startIndex: %d%n", difference);
-	                System.out.print("Magic number: ");
-	                for (byte b : magicNumber) {
-	                    System.out.printf("%02X ", b);
-	                }
-	                System.out.println();
-	                return;
-	            }
-	        }
-	        System.out.println("Magic number not found around the specified startIndex.");
-	    }
-
 	private void setFileHeaderRecordFromFile(MappedByteBuffer buffer) {
 		String version = getVersionAndCheckForCorruption(buffer);
 		fileByteOrder = buffer.get(80) == 0 ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN;

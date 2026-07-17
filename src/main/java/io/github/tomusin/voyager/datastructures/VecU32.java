@@ -32,6 +32,12 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
     	if (count < 0 || count > 10_000_000) {
     		throw new IllegalArgumentException("VecU32.fromByteBuffer: unreasonable count=" + count + " at bit offset " + startIndex);
     	}
+    	// Each value is 4 bytes; the count field itself is 32 bits (4 bytes from bit startIndex).
+    	// Data must fit within the buffer (convert bit offset to byte offset for capacity check).
+    	int byteStart = startIndex / 8;
+    	if ((long) byteStart + 4 + (long) count * 4 > buffer.capacity()) {
+    		throw new IllegalArgumentException("VecU32.fromByteBuffer: count=" + count + " at bit offset " + startIndex + " would exceed buffer capacity " + buffer.capacity());
+    	}
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
     		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, (startIndex + 32 + i * 32) / 8);
@@ -53,6 +59,13 @@ public record VecU32(int count, long[] valueArray, int jtEndIndex) {
      */
     public static VecU32 fromByteBufferAligned(BitByteBuffer buffer, int byteStartIndex) {
     	int count = buffer.getInt(byteStartIndex);
+    	if (count < 0 || count > 10_000_000) {
+    		throw new IllegalArgumentException("VecU32.fromByteBufferAligned: unreasonable count=" + count + " at byte offset " + byteStartIndex);
+    	}
+    	// Each value is 4 bytes; the count field is 4 bytes — total must fit in remaining buffer.
+    	if ((long) byteStartIndex + 4 + (long) count * 4 > buffer.capacity()) {
+    		throw new IllegalArgumentException("VecU32.fromByteBufferAligned: count=" + count + " at byte offset " + byteStartIndex + " would exceed buffer capacity " + buffer.capacity());
+    	}
     	long[] valueArray = new long[count];
     	for (int i = 0; i < count; i++) {
     		valueArray[i] = ReadFromBufferUtils.readUnsignedInt(buffer, byteStartIndex + 4 + i * 4);

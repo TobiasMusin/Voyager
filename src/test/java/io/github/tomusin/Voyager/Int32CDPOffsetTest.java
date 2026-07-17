@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -23,12 +24,13 @@ import io.github.tomusin.voyager.Main;
 class Int32CDPOffsetTest {
 
     private static final Pattern VALIDATION_ERROR = Pattern.compile("CDP VALIDATION ERROR");
+    private static final Path EXAMPLE_FILE = workspacePath("src", "main", "resources", "example_block_jt10.3.jt");
 
     @Test
-    void externalJtFileParsesWithoutValidationErrors() {
+    void exampleJtFileParsesWithoutValidationErrors() {
         String[] captured = captureLog(() -> Main.run(buildCliArgs(
                 "INFO",
-                "C:\\EigeneProgramme\\Test-JTs\\small_tire105_1.jt"
+                EXAMPLE_FILE
         )));
         assertNoValidationErrors(captured);
     }
@@ -37,17 +39,21 @@ class Int32CDPOffsetTest {
     void workspaceJtFileParsesWithoutValidationErrors() {
         String[] captured = captureLog(() -> Main.run(buildCliArgs(
                 "INFO",
-                "E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt"
+                EXAMPLE_FILE
         )));
         assertNoValidationErrors(captured);
     }
 
     // ---- helpers ----
 
-    private static CliArgs buildCliArgs(String logLevel, String filePath) {
+    private static CliArgs buildCliArgs(String logLevel, Path filePath) {
         Set<String> filePaths = new LinkedHashSet<>();
-        filePaths.add(filePath);
+        filePaths.add(filePath.toAbsolutePath().toString());
         return new CliArgs(CliArgs.Mode.PARSE, logLevel, false, true, null, filePaths);
+    }
+
+    private static Path workspacePath(String first, String... more) {
+        return Path.of(first, more).toAbsolutePath().normalize();
     }
 
     private static void assertNoValidationErrors(String[] lines) {

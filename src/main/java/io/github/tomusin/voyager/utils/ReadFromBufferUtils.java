@@ -143,28 +143,12 @@ public class ReadFromBufferUtils {
 	    return signedInt & 0xFFFFFFFFL;
 	}
 	
-	public static long readUnsignedIntFromBitIndex(BitByteBuffer buffer, int startIndex) {
-	    // Read the int value from the specified start index
-	    int signedInt = buffer.getIntAtBitPosition(startIndex);
-	    System.out.println(buffer.getInt(startIndex / 8));
-	    // Convert the signed int to an unsigned long
-	    return signedInt & 0xFFFFFFFFL;
-	}
-	
 	public static int readUnsignedShort(BitByteBuffer buffer, int startIndex) {
 	    // Read the int value from the specified start index
 	    int signedInt = buffer.getShort(startIndex);
 	    
 	    // Convert the signed int to an unsigned long
 	    return signedInt & 0xFFFF;
-	}
-	
-	public static void printByteArrayAsHex(byte[] byteArray) {
-	    StringBuilder hexString = new StringBuilder();
-	    for (byte b : byteArray) {
-	        hexString.append(String.format("%02X ", b));
-	    }
-	    System.out.println(hexString.toString());
 	}
 	
 	public static int readUnsignedByte(BitByteBuffer buffer, int startIndex) {

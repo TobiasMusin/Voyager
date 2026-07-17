@@ -16,47 +16,53 @@ import io.github.tomusin.voyager.Main;
 
 class MainDebugArgsTest {
 
+    private static final Path EXAMPLE_FILE = workspacePath("src", "main", "resources", "example_block_jt10.3.jt");
+    private static final Path EXAMPLE_DIRECTORY = workspacePath("src", "main", "resources", "10.6");
+
     @Test
-    void runsWithDebugArgsForExternalJtFile() {
-        assertDoesNotThrow(() -> Main.run(buildCliArgs(
+    void parsesExampleJtFileWithoutThrowing() {
+        assertDoesNotThrow(() -> Main.run(buildParseArgs(
                 "INFO",
-                "C:\\EigeneProgramme\\Test-JTs\\small_tire105_1.jt"
+                EXAMPLE_FILE
         )));
     }
 
     @Test
-    void runsWithDebugArgsForWorkspaceJtFile() {
-        assertDoesNotThrow(() -> Main.run(buildCliArgs(
+    void parsesExampleJtFileFromWorkspaceResourcesWithoutThrowing() {
+        assertDoesNotThrow(() -> Main.run(buildParseArgs(
                 "INFO",
-                "E:\\JTReaderCollection\\JTReader\\JTReader\\Voyager\\src\\main\\resources\\example_block_jt10.3.jt"
+                EXAMPLE_FILE
         )));
     }
 
     @Test
-    void runsAllWithDebugArgsForWorkspaceJtFile() {
-        assertDoesNotThrow(() -> Main.run(buildCliArgs(
+    void parsesExampleJtDirectoryWithoutThrowing() {
+        assertDoesNotThrow(() -> Main.run(buildParseArgs(
                 "INFO",
-                "C:\\EigeneProgramme\\Test-JTs\\JT"
+                EXAMPLE_DIRECTORY
         )));
     }
     
-    private static CliArgs buildCliArgs(String logLevel, String filePath) {
+    private static CliArgs buildParseArgs(String logLevel, Path inputPath) {
         Set<String> filePaths = new LinkedHashSet<>();
-        Path path = Path.of(filePath);
         
-        if (Files.isDirectory(path)) {
+        if (Files.isDirectory(inputPath)) {
             // Recursively scan directory for all .jt files
-            try (Stream<Path> walk = Files.walk(path)) {
+            try (Stream<Path> walk = Files.walk(inputPath)) {
                 walk.filter(Files::isRegularFile)
                     .filter(p -> p.toString().toLowerCase().endsWith(".jt"))
                     .forEach(p -> filePaths.add(p.toAbsolutePath().toString()));
             } catch (IOException e) {
-                System.err.println("Error scanning directory: " + path + " (" + e.getMessage() + ")");
+                System.err.println("Error scanning directory: " + inputPath + " (" + e.getMessage() + ")");
             }
         } else {
-            filePaths.add(filePath);
+            filePaths.add(inputPath.toAbsolutePath().toString());
         }
         
         return new CliArgs(CliArgs.Mode.PARSE, logLevel, false, true, null, filePaths);
+    }
+
+    private static Path workspacePath(String first, String... more) {
+        return Path.of(first, more).toAbsolutePath().normalize();
     }
 }

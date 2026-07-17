@@ -199,6 +199,18 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			endByte = startIndex + 9 + codeTextWordBytes;
 		}
 		
+		// Validate valueCount and codecType first — these are read before codeTextLengthBits,
+		// so returning startIndex+5 (count+type) is the tightest safe recovery offset.
+		if (valueCount < 0 || valueCount > 1000000) {
+			Logger.error("CDP VALIDATION ERROR at byte {}: invalid valueCount={}", startIndex, valueCount);
+			return new VecI32(0, new int[0], startIndex + 5);
+		}
+			
+		if (codecType < 0 || codecType > 5) {
+			Logger.error("CDP VALIDATION ERROR at byte {}: invalid codecType={}", startIndex, codecType);
+			return new VecI32(0, new int[0], startIndex + 5);
+		}
+
 		if (codeTextLengthBits > buffer.capacity() * 8) {
 			Logger.error("CDP VALIDATION ERROR at byte {}: codeTextLengthBits {} exceeds buffer capacity", 
 			            startIndex, codeTextLengthBits);
@@ -208,16 +220,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		if (codecType == 0 && codeTextLengthBits != valueCount * 32) {
 			Logger.error("CDP VALIDATION ERROR at byte {}: NULL codec requires codeTextLengthBits={} but got {}", 
 			            startIndex, valueCount * 32, codeTextLengthBits);
-			return new VecI32(0, new int[0], startIndex + 9);
-		}
-			
-		if (valueCount < 0 || valueCount > 1000000) {
-			Logger.error("CDP VALIDATION ERROR at byte {}: invalid valueCount={}", startIndex, valueCount);
-			return new VecI32(0, new int[0], startIndex + 9);
-		}
-			
-		if (codecType < 0 || codecType > 5) {
-			Logger.error("CDP VALIDATION ERROR at byte {}: invalid codecType={}", startIndex, codecType);
 			return new VecI32(0, new int[0], startIndex + 9);
 		}
 			
@@ -848,7 +850,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			// TopologicallyCompressedVertexRecords
 			topologicallyCompressedVertexRecords = 
 					TopologicallyCompressedVertexRecordsRecord.fromByteBuffer(buffer, compositeHashOffset + 4);
-		} catch (Exception e) {
+		} catch (Throwable e) {
 			Logger.error(e, "Failed to parse highDegreeFaceAttributeMasks/splitFace/vertexRecords");
 			Logger.error("This is likely due to incorrect offset calculation for highDegreeFaceAttributeMasks at offset {}", faceAttributeMask8.jtEndIndex());
 		}

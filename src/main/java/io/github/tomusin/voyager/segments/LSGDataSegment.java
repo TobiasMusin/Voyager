@@ -119,7 +119,12 @@ public class LSGDataSegment extends DataSegment{
 			        LogicalElementHeaderRecord header = entry.getKey();
 			        Optional<NodeElementType> optType = entry.getValue();
 			        if (optType.isPresent()) {
-			            elementMap.put(header, optType.get().deserialize(decompressedLSGSegmentBuffer, header.jtEndIndex()));
+			            try {
+			                elementMap.put(header, optType.get().deserialize(decompressedLSGSegmentBuffer, header.jtEndIndex()));
+			            } catch (Exception e) {
+			                Logger.error(e, "Failed to deserialize element objectTypeID={} objectID={} at offset {}",
+			                        header.objectTypeID(), header.objectID(), header.jtEndIndex());
+			            }
 			        } else {
 			            // Optional logging
 			            Logger.warn("Unknown NodeElementType for objectTypeID: {}", header.objectTypeID());

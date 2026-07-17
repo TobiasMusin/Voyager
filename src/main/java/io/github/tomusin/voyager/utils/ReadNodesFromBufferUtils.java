@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.tinylog.Logger;
+
 import io.github.tomusin.lsgDataRecords.BaseNodeDataRecord;
 import io.github.tomusin.lsgDataRecords.BaseShapeDataRecord;
 import io.github.tomusin.lsgDataRecords.GroupNodeDataRecord;
@@ -119,12 +121,17 @@ public class ReadNodesFromBufferUtils {
 	public static GroupNodeDataRecord readGroupNodeData(int startIndex, BitByteBuffer buffer, BaseNodeDataRecord baseNodeData) {
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer, startIndex);
 		int childCount = buffer.getInt(startIndex + 1);
+		// Guard against corrupt/misread child counts that would read past the buffer end
+		if (childCount < 0 || (long) startIndex + 1 + 4 + (long) childCount * 4 > buffer.capacity()) {
+			throw new IllegalArgumentException("readGroupNodeData: unreasonable childCount=" + childCount
+					+ " at startIndex=" + startIndex + " (buffer capacity=" + buffer.capacity() + ")");
+		}
 		Set<Integer> childIDSet = new HashSet<>();
 		for (int i = 0; i < childCount; i++) {
 			childIDSet.add(buffer.getInt(startIndex + 1 + 4 + i * 4));
 		}
 		if (childCount != childIDSet.size()) {
-			System.out.println("ALARRM...!");
+			Logger.warn("Duplicate child IDs detected: declared count={}, unique count={} at startIndex={}", childCount, childIDSet.size(), startIndex);
 		}
 		GroupNodeDataRecord groupNodeDataRecord = new GroupNodeDataRecord(baseNodeData, versionNumber, childCount, childIDSet, startIndex, (startIndex + 1 + 4 + childCount * 4));
 		return groupNodeDataRecord;
