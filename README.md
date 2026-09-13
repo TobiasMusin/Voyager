@@ -2,7 +2,7 @@
 
 voyager is a work-in-progress jt reader for jt version 10 and related files.
 
-it can parse the scene graph, link some geometry to tree nodes, and export vertex positions to gltf 2.0.
+it can parse the scene graph, link some geometry to tree nodes, reconstruct selected topology, and export triangle meshes to gltf 2.0.
 
 this project was mainly built as a learning and experimentation exercise, so it is not intended to be treated as production software.
 
@@ -12,19 +12,18 @@ this repository is being published as an honest snapshot of the current state. i
 
 - reads jt files and builds an internal scene graph
 - parses node types, attributes, and some metadata-related structures
-- links available shape lod geometry to tree nodes when object ids match
-- exports vertex positions to a `.gltf` file
+- links available shape lod geometry to tree nodes through late-loaded shape references
+- reconstructs indexed triangle topology for supported topologically compressed ShapeLOD data
+- exports indexed triangle meshes to a `.gltf` file
 - writes gltf with an embedded base64 buffer, so no separate `.bin` file is needed
-- provides a simple opengl viewer for point-cloud style inspection
+- provides a simple opengl viewer with filled faces, triangle edges, and vertices for decoded meshes
 - supports parsing one file, multiple files, or a directory of `.jt` files
 - supports `parse`, `render`, and `export` modes
 
 ## what does not work yet
 
-- face decoding is not implemented
-- triangle meshes are not reconstructed
-- normals, uvs, indices, and material-aware mesh export are not implemented
-- the gltf exporter currently writes only vertex positions
+- topology decoding is currently verified on selected JT 10.x fixtures and needs broader format coverage
+- normals, uvs, and material-aware mesh export are not implemented
 - the exported gltf does not preserve the jt node tree hierarchy
 - metadata nodes and the node tree are parsed internally, but they are not exported to gltf
 - the viewer is experimental and may render incorrectly or incompletely
@@ -124,8 +123,8 @@ default mode is parse.
 
 the reader and exporter are intentionally incomplete.
 
-- only vertex coordinates are exported to gltf
-- face topology is not decoded
+- only positions and reconstructed triangle indices are exported to gltf
+- topology decoding is incomplete for the broader JT corpus
 - the gltf exporter currently writes a flat set of nodes for geometry-bearing objects
 - the jt hierarchy is available internally, but it is not preserved in the exported gltf
 - some jt files may still fail because the format documentation is incomplete or ambiguous

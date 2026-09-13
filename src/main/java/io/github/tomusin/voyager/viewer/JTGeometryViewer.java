@@ -8,6 +8,8 @@ import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -20,14 +22,14 @@ import static org.lwjgl.system.MemoryUtil.*;
  * <p>
  * Usage: {@code java io.github.tomusin.voyager.viewer.JTGeometryViewer <path-to-jt-file>}
  * <p>
- * Renders the decoded vertex coordinate array as a point cloud / wireframe cube.
+ * Renders decoded vertex coordinate arrays as indexed triangle meshes when topology is available.
  * Supports mouse-drag rotation and scroll-wheel zoom.
  */
 public class JTGeometryViewer {
 
     private long window;
     private int vao, vbo, ibo, shaderProgram;
-    private int vertexCount, indexCount;
+    private int vertexCount, triangleIndexCount;
 
     // Camera
     private float rotX = 25f, rotY = -35f;
@@ -74,7 +76,7 @@ public class JTGeometryViewer {
 
     /**
      * Launch the viewer with all geometry from the given tree nodes.
-     * Merges all vertex arrays into a single combined point cloud.
+    * Merges all vertex arrays into one indexed triangle mesh.
      */
     public static void showAll(java.util.List<io.github.tomusin.voyager.datastructures.TreeNode> geometryNodes) {
         if (geometryNodes.isEmpty()) {
@@ -82,13 +84,19 @@ public class JTGeometryViewer {
             return;
         }
 
-        // Collect all coordinate arrays
-        java.util.List<float[][]> allCoords = new java.util.ArrayList<>();
+        List<float[][]> allCoords = new ArrayList<>();
+        List<int[]> allIndices = new ArrayList<>();
         int totalVertices = 0;
         for (var node : geometryNodes) {
             float[][] coords = node.getVertexCoordinates();
             if (coords != null && coords.length >= 3 && coords[0].length > 0) {
                 allCoords.add(coords);
+                int[] indices = node.getTriangleIndices();
+                if (indices != null && indices.length > 0 && indices.length % 3 == 0) {
+                    allIndices.add(indices);
+                } else {
+                    allIndices.add(null);
+                }
                 totalVertices += coords[0].length;
             }
         }
@@ -98,19 +106,27 @@ public class JTGeometryViewer {
             return;
         }
 
-        // Merge into single float[3][totalVertices]
+        // Merge into one coordinate buffer and adjust every node-local index.
         float[][] merged = new float[3][totalVertices];
+        List<Integer> mergedIndices = new ArrayList<>();
         int offset = 0;
-        for (float[][] coords : allCoords) {
+        for (int nodeIndex = 0; nodeIndex < allCoords.size(); nodeIndex++) {
+            float[][] coords = allCoords.get(nodeIndex);
             int n = coords[0].length;
             System.arraycopy(coords[0], 0, merged[0], offset, n);
             System.arraycopy(coords[1], 0, merged[1], offset, n);
             System.arraycopy(coords[2], 0, merged[2], offset, n);
+            int[] indices = allIndices.get(nodeIndex);
+            if (indices != null) {
+                for (int index : indices) mergedIndices.add(offset + index);
+            }
             offset += n;
         }
 
-        System.out.printf("Rendering %d geometry nodes, %d total vertices%n", allCoords.size(), totalVertices);
-        new JTGeometryViewer().launchWithCoords(merged);
+        int[] triangles = mergedIndices.stream().mapToInt(Integer::intValue).toArray();
+        System.out.printf("Rendering %d geometry nodes, %d total vertices, %d triangles%n",
+                allCoords.size(), totalVertices, triangles.length / 3);
+        new JTGeometryViewer().launchWithCoords(merged, triangles);
     }
 
     /**
@@ -125,6 +141,10 @@ public class JTGeometryViewer {
     // ───────── public API ─────────
 
     public void launchWithCoords(float[][] coords) {
+        launchWithCoords(coords, new int[0]);
+    }
+
+    public void launchWithCoords(float[][] coords, int[] triangleIndices) {
         // Log vertex data for debugging
         int n = coords[0].length;
         System.out.println("=== JTGeometryViewer: " + n + " vertices ===");
@@ -132,7 +152,7 @@ public class JTGeometryViewer {
 //            System.out.printf("  v[%d] = (%.4f, %.4f, %.4f)%n", i, coords[0][i], coords[1][i], coords[2][i]);
 //        }
         init();
-        uploadGeometry(coords);
+        uploadGeometry(coords, triangleIndices);
         loop();
         cleanup();
     }
@@ -189,7 +209,7 @@ public class JTGeometryViewer {
 
     // ───────── geometry upload ─────────
 
-    private void uploadGeometry(float[][] coords) {
+    private void uploadGeometry(float[][] coords, int[] triangleIndices) {
         int n = coords[0].length; // vertex count
         vertexCount = n;
 
@@ -223,16 +243,7 @@ public class JTGeometryViewer {
             verts[i * 3 + 2] = Float.isFinite(coords[2][i]) ? coords[2][i] : 0f;
         }
 
-        // Build wireframe indices - connect vertices that share 2 of 3 coordinates (box edges)
-        // or for larger meshes, connect nearest neighbors
-        int[] indices;
-        if (n <= 64) {
-            indices = buildWireframeBySharedCoords(coords);
-        } else {
-            // Just draw all points, no lines
-            indices = new int[0];
-        }
-        indexCount = indices.length;
+        triangleIndexCount = triangleIndices.length;
 
         // Upload
         vao = glGenVertexArrays();
@@ -244,10 +255,10 @@ public class JTGeometryViewer {
         glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
         glEnableVertexAttribArray(0);
 
-        if (indexCount > 0) {
+        if (triangleIndexCount > 0) {
             ibo = glGenBuffers();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, triangleIndices, GL_STATIC_DRAW);
         }
 
         glBindVertexArray(0);
@@ -264,28 +275,6 @@ public class JTGeometryViewer {
                 .replace("%CZ%", String.valueOf(cz))
                 .replace("%EXT%", String.valueOf(extent));
         shaderProgram = createProgram(vs, FRAG_SRC);
-    }
-
-    /**
-     * Build wireframe edges by checking which pairs share exactly two coordinates
-     * (i.e. differ in exactly one axis — a box edge). Works for any vertex count.
-     */
-    private int[] buildWireframeBySharedCoords(float[][] coords) {
-        int n = coords[0].length;
-        java.util.List<Integer> idx = new java.util.ArrayList<>();
-        float eps = extent * 0.001f;
-        for (int i = 0; i < n; i++) {
-            for (int j = i + 1; j < n; j++) {
-                int shared = 0;
-                if (Math.abs(coords[0][i] - coords[0][j]) < eps) shared++;
-                if (Math.abs(coords[1][i] - coords[1][j]) < eps) shared++;
-                if (Math.abs(coords[2][i] - coords[2][j]) < eps) shared++;
-                if (shared == 2) { // edge: differ in exactly 1 axis
-                    idx.add(i); idx.add(j);
-                }
-            }
-        }
-        return idx.stream().mapToInt(Integer::intValue).toArray();
     }
 
     // ───────── render loop ─────────
@@ -319,10 +308,14 @@ public class JTGeometryViewer {
 
             glBindVertexArray(vao);
 
-            // Draw wireframe edges
-            if (indexCount > 0) {
+            if (triangleIndexCount > 0) {
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                glDrawElements(GL_TRIANGLES, triangleIndexCount, GL_UNSIGNED_INT, 0);
+
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                 glLineWidth(2f);
-                glDrawElements(GL_LINES, indexCount, GL_UNSIGNED_INT, 0);
+                glDrawElements(GL_TRIANGLES, triangleIndexCount, GL_UNSIGNED_INT, 0);
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
             // Draw vertices as points
