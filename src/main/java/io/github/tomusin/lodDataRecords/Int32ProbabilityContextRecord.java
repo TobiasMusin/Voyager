@@ -163,11 +163,11 @@ public record Int32ProbabilityContextRecord(
 	/**
 	 * Validate if this Int32ProbabilityContextRecord is valid.
 	 * Checks:
-	 * - entryCount: 0 <= entryCount < 10000
-	 * - numberOccurrenceCountBits: 0 <= bits <= 32
-	 * - numberValueBits: 0 <= bits <= 32
+	 * - entryCount: $0 \leq entryCount &lt; 10000$
+	 * - numberOccurrenceCountBits: $0 \leq bits \leq 32$
+	 * - numberValueBits: $0 \leq bits \leq 32$
 	 * - minValue: must be positive (> 0)
-	 * - totalBitsRead: must be < buffer capacity (passed as parameter)
+	 * - totalBitsRead: must be &lt; buffer capacity (passed as parameter)
 	 * 
 	 * @param bufferCapacityBits Buffer capacity in bits for validation
 	 * @return true if record is valid, false otherwise
