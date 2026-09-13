@@ -70,11 +70,15 @@ public class JTGeometryViewer {
 
                 vec3 normal = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
                 if (!gl_FrontFacing) normal = -normal;
-                vec3 lightDirection = normalize(vec3(-0.45, 0.65, 0.55));
+                vec3 keyLightDirection = normalize(vec3(-0.45, 0.65, 0.55));
+                vec3 fillLightDirection = normalize(vec3(0.38, -0.42, -0.58));
                 vec3 viewDirection = normalize(uCameraPosition - vWorldPos);
-                vec3 halfVector = normalize(lightDirection + viewDirection);
-                float diffuse = max(dot(normal, lightDirection), 0.0);
-                float specular = pow(max(dot(normal, halfVector), 0.0), 72.0);
+                vec3 keyHalfVector = normalize(keyLightDirection + viewDirection);
+                vec3 fillHalfVector = normalize(fillLightDirection + viewDirection);
+                float diffuse = max(dot(normal, keyLightDirection), 0.0)
+                    + max(dot(normal, fillLightDirection), 0.0) * 0.28;
+                float specular = pow(max(dot(normal, keyHalfVector), 0.0), 72.0)
+                    + pow(max(dot(normal, fillHalfVector), 0.0), 72.0) * 0.12;
                 vec3 baseColor = vec3(0.48);
                 vec3 metallicSpecular = mix(vec3(0.18), baseColor, 0.55);
                 vec3 color = baseColor * (0.14 + diffuse * 0.86) + metallicSpecular * specular * 0.55;
