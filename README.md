@@ -79,6 +79,8 @@ render a file:
 mvn exec:java -Dexec.args="--render C:\path\to\file.jt"
 ```
 
+The viewer starts with a grey Blinn-Phong material and directional light. Press `C` to toggle coordinate-based colors.
+
 export one file to a specific gltf path:
 
 ```cmd

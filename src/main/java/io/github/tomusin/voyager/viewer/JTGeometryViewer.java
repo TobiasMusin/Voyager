@@ -3,6 +3,7 @@ package io.github.tomusin.voyager.viewer;
 import io.github.tomusin.lodDataRecords.CompressedVertexCoordinateArrayRecord;
 
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
@@ -36,6 +37,7 @@ public class JTGeometryViewer {
     private float zoom = 2.5f;
     private double lastMX, lastMY;
     private boolean dragging;
+    private boolean coordinateColorMode;
 
     // Geometry centre / extent for framing
     private float cx, cy, cz, extent;
@@ -45,21 +47,38 @@ public class JTGeometryViewer {
             #version 330 core
             layout(location=0) in vec3 aPos;
             uniform mat4 uMVP;
-            out vec3 vColor;
+            out vec3 vWorldPos;
             void main() {
                 gl_Position = uMVP * vec4(aPos, 1.0);
-                // colour by normalised position
-                vColor = (aPos - vec3(%CX%, %CY%, %CZ%)) / %EXT% * 0.5 + 0.5;
+                vWorldPos = aPos;
                 gl_PointSize = 6.0;
             }
             """;
 
     private static final String FRAG_SRC = """
             #version 330 core
-            in vec3 vColor;
+            in vec3 vWorldPos;
+            uniform vec3 uCameraPosition;
+            uniform int uCoordinateColorMode;
             out vec4 fragColor;
             void main() {
-                fragColor = vec4(vColor, 1.0);
+                if (uCoordinateColorMode != 0) {
+                    vec3 coordinateColor = (vWorldPos - vec3(%CX%, %CY%, %CZ%)) / %EXT% * 0.5 + 0.5;
+                    fragColor = vec4(coordinateColor, 1.0);
+                    return;
+                }
+
+                vec3 normal = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
+                if (!gl_FrontFacing) normal = -normal;
+                vec3 lightDirection = normalize(vec3(-0.45, 0.65, 0.55));
+                vec3 viewDirection = normalize(uCameraPosition - vWorldPos);
+                vec3 halfVector = normalize(lightDirection + viewDirection);
+                float diffuse = max(dot(normal, lightDirection), 0.0);
+                float specular = pow(max(dot(normal, halfVector), 0.0), 72.0);
+                vec3 baseColor = vec3(0.48);
+                vec3 metallicSpecular = mix(vec3(0.18), baseColor, 0.55);
+                vec3 color = baseColor * (0.14 + diffuse * 0.86) + metallicSpecular * specular * 0.55;
+                fragColor = vec4(color, 1.0);
             }
             """;
 
@@ -195,6 +214,10 @@ public class JTGeometryViewer {
 
         glfwSetKeyCallback(window, (w, key, sc, action, mods) -> {
             if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE) glfwSetWindowShouldClose(w, true);
+            if (key == GLFW_KEY_C && action == GLFW_RELEASE) {
+                coordinateColorMode = !coordinateColorMode;
+                System.out.println(coordinateColorMode ? "Coordinate color mode" : "Blinn-Phong lighting mode");
+            }
         });
 
         glfwMakeContextCurrent(window);
@@ -269,12 +292,17 @@ public class JTGeometryViewer {
         if (!Float.isFinite(cy)) cy = 0f;
         if (!Float.isFinite(cz)) cz = 0f;
         if (!Float.isFinite(extent) || extent < 1e-6f) extent = 1f;
-        String vs = VERT_SRC
+        String vs = substituteShaderConstants(VERT_SRC);
+        String fs = substituteShaderConstants(FRAG_SRC);
+        shaderProgram = createProgram(vs, fs);
+    }
+
+    private String substituteShaderConstants(String shaderSource) {
+        return shaderSource
                 .replace("%CX%", String.valueOf(cx))
                 .replace("%CY%", String.valueOf(cy))
                 .replace("%CZ%", String.valueOf(cz))
                 .replace("%EXT%", String.valueOf(extent));
-        shaderProgram = createProgram(vs, FRAG_SRC);
     }
 
     // ───────── render loop ─────────
@@ -305,6 +333,11 @@ public class JTGeometryViewer {
                 mvp.get(fb);
                 glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uMVP"), false, fb);
             }
+            Matrix4f inverseView = new Matrix4f(view).invert();
+            Vector3f cameraPosition = inverseView.getTranslation(new Vector3f());
+            glUniform3f(glGetUniformLocation(shaderProgram, "uCameraPosition"),
+                    cameraPosition.x, cameraPosition.y, cameraPosition.z);
+            glUniform1i(glGetUniformLocation(shaderProgram, "uCoordinateColorMode"), coordinateColorMode ? 1 : 0);
 
             glBindVertexArray(vao);
 
