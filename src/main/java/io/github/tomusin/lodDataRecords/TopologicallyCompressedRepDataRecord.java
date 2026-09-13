@@ -52,6 +52,9 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 * @param predictorType Type of prediction to apply
 	 */
 	private static void unpackResiduals(int[] residuals, PredictorType predictorType) {
+		if (predictorType == PredictorType.PredNULL) {
+			return;
+		}
 		final int len = residuals.length;
 		for (int i = 4; i < len; i++) {
 			int predicted = residuals[i - 1];
@@ -791,11 +794,11 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		
 		// Read 8 Face Degrees arrays (readInt32CDP: byte offset in → byte offset out)
 		try {
-			faceDegrees[0] = readInt32CDP(buffer, byteOffset);
+			faceDegrees[0] = readInt32CDP(buffer, byteOffset, PredictorType.PredNULL);
 			for (int i = 1; i < 8; i++) {
 				// Get next byte offset from previous CDP end
 				byteOffset = faceDegrees[i - 1].jtEndIndex();
-				faceDegrees[i] = readInt32CDP(buffer, byteOffset);
+				faceDegrees[i] = readInt32CDP(buffer, byteOffset, PredictorType.PredNULL);
 			}		
 			if (Arrays.stream(faceDegrees).filter(fd -> fd.count() == 0).count() > 0) {
 				Logger.warn("Face Degrees array 0 is empty at byte offset {}", byteOffset);
@@ -808,8 +811,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		}
 		
 		// Continue with CDP-encoded arrays (all byte offsets)
-		VecI32 vertexValences = readInt32CDP(buffer, faceDegrees[7].jtEndIndex());
-		VecI32 vertexGroups = readInt32CDP(buffer, vertexValences.jtEndIndex());
+		VecI32 vertexValences = readInt32CDP(buffer, faceDegrees[7].jtEndIndex(), PredictorType.PredNULL);
+		VecI32 vertexGroups = readInt32CDP(buffer, vertexValences.jtEndIndex(), PredictorType.PredNULL);
 		
 		VecI32 vertexFlags = readInt32CDP(buffer, vertexGroups.jtEndIndex());
 		
@@ -818,13 +821,13 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		byteOffset = vertexFlags.jtEndIndex();
 		Logger.debug("=== Starting faceAttributeMasks at byte {}", byteOffset);
 		for (int i = 0; i < 8; i++) {
-			faceAttributeMasks[i] = readInt32CDP(buffer, byteOffset);
+			faceAttributeMasks[i] = readInt32CDP(buffer, byteOffset, PredictorType.PredNULL);
 			int nextOffset = faceAttributeMasks[i].jtEndIndex();
 			Logger.debug("  faceAttributeMasks[{}]: count={}, offset {}→{}", i, faceAttributeMasks[i].count(), byteOffset, nextOffset);
 			byteOffset = nextOffset;
 		}
 		
-		VecI32 faceAttributeMask8 = readInt32CDP(buffer, byteOffset);
+		VecI32 faceAttributeMask8 = readInt32CDP(buffer, byteOffset, PredictorType.PredNULL);
 		Logger.debug("faceAttributeMask8 count={}, endOffset={}", faceAttributeMask8.count(), faceAttributeMask8.jtEndIndex());
 		VecU32 highDegreeFaceAttributeMasks = null;
 		VecI32 splitFaceSyms = null;
@@ -838,7 +841,7 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			Logger.debug("highDegreeFaceAttributeMasks count={}, endOffset={}", highDegreeFaceAttributeMasks.count(), highDegreeFaceAttributeMasks.jtEndIndex());
 			splitFaceSyms = readInt32CDP(buffer, highDegreeFaceAttributeMasks.jtEndIndex());
 			Logger.debug("splitFaceSyms count={}, endOffset={}", splitFaceSyms.count(), splitFaceSyms.jtEndIndex());
-			splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex());
+			splitFacePositions = readInt32CDP(buffer, splitFaceSyms.jtEndIndex(), PredictorType.PredNULL);
 			Logger.debug("splitFacePositions count={}, endOffset={}", splitFacePositions.count(), splitFacePositions.jtEndIndex());
 			
 			// U32: CompositeHash

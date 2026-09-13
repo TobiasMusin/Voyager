@@ -54,6 +54,7 @@ if ($buffers.Count -ge 1) {
 
 $bufferViews = @($document.bufferViews)
 $accessors = @($document.accessors)
+$positionAccessorIndices = [System.Collections.Generic.HashSet[int]]::new()
 foreach ($accessorIndex in 0..($accessors.Count - 1)) {
     if ($accessors.Count -eq 0) { break }
     $accessor = $accessors[$accessorIndex]
@@ -62,7 +63,6 @@ foreach ($accessorIndex in 0..($accessors.Count - 1)) {
         continue
     }
     if ($accessor.componentType -ne 5126 -or $accessor.type -ne 'VEC3') {
-        Add-ValidationError $errors "accessors[$accessorIndex] must be FLOAT VEC3 positions."
         continue
     }
     $view = $bufferViews[[int]$accessor.bufferView]
@@ -107,13 +107,63 @@ foreach ($mesh in @($document.meshes)) {
     foreach ($primitive in @($mesh.primitives)) {
         if ($null -eq $primitive.attributes.POSITION) {
             Add-ValidationError $errors 'A mesh primitive does not define POSITION.'
+        } elseif ([int]$primitive.attributes.POSITION -lt 0 -or [int]$primitive.attributes.POSITION -ge $accessors.Count) {
+            Add-ValidationError $errors 'A mesh primitive references an invalid POSITION accessor.'
+        } else {
+            $positionAccessorIndices.Add([int]$primitive.attributes.POSITION) | Out-Null
         }
         $mode = if ($null -eq $primitive.mode) { 4 } else { [int]$primitive.mode }
         if ($mode -eq 0) { $pointPrimitiveCount++ }
         if ($mode -eq 4) {
             $trianglePrimitiveCount++
-            if ($RequireTriangles -and $null -eq $primitive.indices) {
-                Add-ValidationError $errors 'A required triangle primitive has no index accessor.'
+            if ($null -eq $primitive.indices) {
+                Add-ValidationError $errors 'A triangle primitive has no index accessor.'
+            } elseif ($null -ne $primitive.attributes.POSITION -and [int]$primitive.attributes.POSITION -ge 0 -and [int]$primitive.attributes.POSITION -lt $accessors.Count) {
+                $indexAccessorIndex = [int]$primitive.indices
+                if ($indexAccessorIndex -lt 0 -or $indexAccessorIndex -ge $accessors.Count) {
+                    Add-ValidationError $errors 'A triangle primitive references an invalid index accessor.'
+                    continue
+                }
+                $indexAccessor = $accessors[$indexAccessorIndex]
+                if ($indexAccessor.type -ne 'SCALAR' -or @($indexAccessor.componentType) -notcontains 5123 -and @($indexAccessor.componentType) -notcontains 5125) {
+                    Add-ValidationError $errors "accessors[$indexAccessorIndex] must be UNSIGNED_SHORT or UNSIGNED_INT SCALAR indices."
+                    continue
+                }
+                if ($indexAccessor.count % 3 -ne 0) {
+                    Add-ValidationError $errors "accessors[$indexAccessorIndex] index count must be divisible by three."
+                    continue
+                }
+                $indexViewIndex = [int]$indexAccessor.bufferView
+                if ($indexViewIndex -lt 0 -or $indexViewIndex -ge $bufferViews.Count) {
+                    Add-ValidationError $errors "accessors[$indexAccessorIndex] references an invalid bufferView."
+                    continue
+                }
+                $indexSize = if ($indexAccessor.componentType -eq 5123) { 2 } else { 4 }
+                $indexView = $bufferViews[$indexViewIndex]
+                $indexOffset = if ($null -eq $indexView.byteOffset) { 0 } else { [int]$indexView.byteOffset }
+                $indexByteLength = [int]$indexAccessor.count * $indexSize
+                if ([int]$indexView.byteLength -ne $indexByteLength -or $null -eq $bytes -or $indexOffset -lt 0 -or $indexOffset + $indexByteLength -gt $bytes.Length) {
+                    Add-ValidationError $errors "accessors[$indexAccessorIndex] index bytes are outside its bufferView or decoded buffer."
+                    continue
+                }
+                $positionCount = [int]$accessors[[int]$primitive.attributes.POSITION].count
+                $nonDegenerateTriangle = $false
+                for ($indexOffsetInAccessor = 0; $indexOffsetInAccessor -lt [int]$indexAccessor.count; $indexOffsetInAccessor++) {
+                    $byteIndex = $indexOffset + ($indexOffsetInAccessor * $indexSize)
+                    $indexValue = if ($indexSize -eq 2) { [BitConverter]::ToUInt16($bytes, $byteIndex) } else { [BitConverter]::ToUInt32($bytes, $byteIndex) }
+                    if ($indexValue -ge $positionCount) {
+                        Add-ValidationError $errors "accessors[$indexAccessorIndex] index $indexOffsetInAccessor is outside POSITION count $positionCount."
+                        break
+                    }
+                    if ($indexOffsetInAccessor % 3 -eq 2) {
+                        $first = if ($indexSize -eq 2) { [BitConverter]::ToUInt16($bytes, $byteIndex - (2 * $indexSize)) } else { [BitConverter]::ToUInt32($bytes, $byteIndex - (2 * $indexSize)) }
+                        $second = if ($indexSize -eq 2) { [BitConverter]::ToUInt16($bytes, $byteIndex - $indexSize) } else { [BitConverter]::ToUInt32($bytes, $byteIndex - $indexSize) }
+                        if ($first -ne $second -and $second -ne $indexValue -and $first -ne $indexValue) { $nonDegenerateTriangle = $true }
+                    }
+                }
+                if (-not $nonDegenerateTriangle) {
+                    Add-ValidationError $errors "accessors[$indexAccessorIndex] contains no non-degenerate triangle."
+                }
             }
         }
         if ($RequireTriangles -and $mode -ne 4) {

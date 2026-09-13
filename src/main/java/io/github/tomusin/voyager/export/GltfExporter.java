@@ -40,7 +40,9 @@ public class GltfExporter {
         for (TreeNode node : geometryNodes) {
             float[][] coords = node.getVertexCoordinates();
             if (coords == null || coords.length < 3) continue;
-            meshes.add(buildMeshData(node, coords));
+            int[] indices = node.getTriangleIndices();
+            if (indices == null || indices.length == 0 || indices.length % 3 != 0) continue;
+            meshes.add(buildMeshData(node, coords, indices));
         }
 
         DslJson<Object> dslJson = new DslJson<>();
@@ -57,17 +59,19 @@ public class GltfExporter {
     private static class MeshData {
         String name;
         float[] positions;
+        int[] indices;
         int vertexCount;
         float[] min = new float[3];
         float[] max = new float[3];
     }
 
-    private static MeshData buildMeshData(TreeNode node, float[][] coords) {
+    private static MeshData buildMeshData(TreeNode node, float[][] coords, int[] indices) {
         int n = coords[0].length;
         MeshData m = new MeshData();
         m.name = node.nodeName != null ? node.nodeName : "mesh_" + node.objectID;
         m.vertexCount = n;
         m.positions = new float[n * 3];
+        m.indices = indices;
 
         m.min[0] = Float.MAX_VALUE; m.min[1] = Float.MAX_VALUE; m.min[2] = Float.MAX_VALUE;
         m.max[0] = -Float.MAX_VALUE; m.max[1] = -Float.MAX_VALUE; m.max[2] = -Float.MAX_VALUE;
@@ -133,9 +137,10 @@ public class GltfExporter {
             w.writeByte(JsonWriter.OBJECT_START);
             writeKey(w, "attributes", false);
             w.writeByte(JsonWriter.OBJECT_START);
-            writeKey(w, "POSITION", false); NumberConverter.serialize(i, w);
+            writeKey(w, "POSITION", false); NumberConverter.serialize(i * 2, w);
             w.writeByte(JsonWriter.OBJECT_END);
-            writeKey(w, "mode", true); NumberConverter.serialize(0, w); // POINTS
+            writeKey(w, "indices", true); NumberConverter.serialize(i * 2 + 1, w);
+            writeKey(w, "mode", true); NumberConverter.serialize(4, w); // TRIANGLES
             w.writeByte(JsonWriter.OBJECT_END);
             w.writeByte(JsonWriter.ARRAY_END);
             w.writeByte(JsonWriter.OBJECT_END);
@@ -149,12 +154,19 @@ public class GltfExporter {
             MeshData m = meshes.get(i);
             if (i > 0) w.writeByte(JsonWriter.COMMA);
             w.writeByte(JsonWriter.OBJECT_START);
-            writeKey(w, "bufferView", false); NumberConverter.serialize(i, w);
+            writeKey(w, "bufferView", false); NumberConverter.serialize(i * 2, w);
             writeKey(w, "componentType", true); NumberConverter.serialize(5126, w); // FLOAT
             writeKey(w, "count", true); NumberConverter.serialize(m.vertexCount, w);
             writeKey(w, "type", true); w.writeString("VEC3");
             writeKey(w, "min", true); writeFloatArray(w, m.min);
             writeKey(w, "max", true); writeFloatArray(w, m.max);
+            w.writeByte(JsonWriter.OBJECT_END);
+            w.writeByte(JsonWriter.COMMA);
+            w.writeByte(JsonWriter.OBJECT_START);
+            writeKey(w, "bufferView", false); NumberConverter.serialize(i * 2 + 1, w);
+            writeKey(w, "componentType", true); NumberConverter.serialize(5125, w); // UNSIGNED_INT
+            writeKey(w, "count", true); NumberConverter.serialize(m.indices.length, w);
+            writeKey(w, "type", true); w.writeString("SCALAR");
             w.writeByte(JsonWriter.OBJECT_END);
         }
         w.writeByte(JsonWriter.ARRAY_END);
@@ -174,15 +186,26 @@ public class GltfExporter {
             writeKey(w, "target", true); NumberConverter.serialize(34962, w); // ARRAY_BUFFER
             w.writeByte(JsonWriter.OBJECT_END);
             byteOffset += byteLength;
+            w.writeByte(JsonWriter.COMMA);
+            w.writeByte(JsonWriter.OBJECT_START);
+            writeKey(w, "buffer", false); NumberConverter.serialize(0, w);
+            writeKey(w, "byteOffset", true); NumberConverter.serialize(byteOffset, w);
+            writeKey(w, "byteLength", true); NumberConverter.serialize(m.indices.length * 4, w);
+            writeKey(w, "target", true); NumberConverter.serialize(34963, w); // ELEMENT_ARRAY_BUFFER
+            w.writeByte(JsonWriter.OBJECT_END);
+            byteOffset += m.indices.length * 4;
         }
         w.writeByte(JsonWriter.ARRAY_END);
 
         // buffers — single buffer, base64-embedded
-        int totalBytes = meshes.stream().mapToInt(m -> m.vertexCount * 3 * 4).sum();
+        int totalBytes = meshes.stream().mapToInt(m -> m.vertexCount * 3 * 4 + m.indices.length * 4).sum();
         ByteBuffer binBuf = ByteBuffer.allocate(totalBytes).order(ByteOrder.LITTLE_ENDIAN);
         for (MeshData m : meshes) {
             for (float v : m.positions) {
                 binBuf.putFloat(v);
+            }
+            for (int index : m.indices) {
+                binBuf.putInt(index);
             }
         }
         String dataUri = "data:application/octet-stream;base64," +

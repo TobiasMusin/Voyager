@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.github.tomusin.lodDataRecords.CompressedVertexCoordinateArrayRecord;
+import io.github.tomusin.lodDataRecords.DualVFMeshTopologyDecoder;
 import io.github.tomusin.lodDataRecords.TopologicallyCompressedRepDataRecord;
 import io.github.tomusin.lodDataRecords.VertexShapeLODDataRecord;
 import io.github.tomusin.lodElements.TriStripSetShapeLODElementRecord;
@@ -83,6 +84,21 @@ public class TreeNode {
             }
         }
         return null;
+    }
+
+    /** Returns triangle indices reconstructed from this node's topological ShapeLOD data. */
+    public int[] getTriangleIndices() {
+        float[][] coordinates = getVertexCoordinates();
+        if (coordinates == null || coordinates.length < 3) return null;
+        TopologicallyCompressedRepDataRecord representation = getTopologicalRepresentation();
+        return representation == null ? null : DualVFMeshTopologyDecoder.decodeTriangleIndices(representation, coordinates[0].length);
+    }
+
+    private TopologicallyCompressedRepDataRecord getTopologicalRepresentation() {
+        if (lodGeometry == null) return null;
+        VertexShapeLODDataRecord lod = lodGeometry.vertexShapeLODDataRecord();
+        if (lod.topoMeshTopologicallyCompressedLODDataRecord() == null) return null;
+        return lod.topoMeshTopologicallyCompressedLODDataRecord().topologicallyCompressedRepDataRecord();
     }
 
     /**
