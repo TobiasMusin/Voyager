@@ -8,4 +8,8 @@ public class DataSegment {
 	public DataSegment(SegmentHeaderRecord segmentHeaderRecord) {
 		this.segmentHeaderRecord = segmentHeaderRecord;
 	}
+
+	public SegmentHeaderRecord getSegmentHeaderRecord() {
+		return segmentHeaderRecord;
+	}
 }

@@ -111,11 +111,20 @@ public class JTReader {
 		Map<Integer, TreeNode> treeNodeMap = lsgSegment.getTreeNodeMap();
 
 		for (ShapeLOD0DataSegment shapeSeg : shapeLOD0Segments) {
+			String segmentGuid = shapeSeg.getSegmentHeaderRecord().guid();
 			for (Map.Entry<Integer, BufferDeserializable> entry : shapeSeg.getElementsByObjectID().entrySet()) {
 				int objectID = entry.getKey();
 				BufferDeserializable obj = entry.getValue();
 
 				if (obj instanceof TriStripSetShapeLODElementRecord lodElement) {
+					TreeNode lateLoadedNode = findLateLoadedShapeNode(treeNodeMap, segmentGuid);
+					if (lateLoadedNode != null) {
+						lateLoadedNode.setLodGeometry(lodElement);
+						Logger.debug("Linked geometry to tree node {} ({}) via ShapeLOD segment {}",
+								lateLoadedNode.objectID, lateLoadedNode.nodeType, segmentGuid);
+						continue;
+					}
+
 					// Check if this object ID is already a tree node (direct match)
 					TreeNode node = treeNodeMap.get(objectID);
 					if (node != null) {
@@ -144,6 +153,16 @@ public class JTReader {
 		// Log summary
 		long geometryCount = treeNodeMap.values().stream().filter(TreeNode::hasGeometry).count();
 		Logger.info("Linked {} geometry elements to tree nodes", geometryCount);
+	}
+
+	private TreeNode findLateLoadedShapeNode(Map<Integer, TreeNode> treeNodeMap, String segmentGuid) {
+		return treeNodeMap.values().stream()
+				.filter(node -> "TRI_STRIP_SET_SHAPE_NODE_ELEMENT".equals(node.nodeType))
+				.filter(node -> node.attributes.entrySet().stream().anyMatch(attribute ->
+						attribute.getKey().startsWith("JT_LLPROP_SHAPEIMPL")
+								&& segmentGuid.equalsIgnoreCase(attribute.getValue())))
+				.findFirst()
+				.orElse(null);
 	}
 
 	/**

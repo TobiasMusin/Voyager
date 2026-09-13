@@ -120,7 +120,7 @@ public class Main {
 			for (TreeNode node : allGeoNodes) {
 				float[][] coords = node.getVertexCoordinates();
 				System.out.printf("Node %d (%s): %d vertices%n",
-						node.objectID, node.nodeName, coords != null ? coords[0].length : 0);
+						node.objectID, node.nodeName, coords != null && coords.length > 0 ? coords[0].length : 0);
 			}
 		}
 
