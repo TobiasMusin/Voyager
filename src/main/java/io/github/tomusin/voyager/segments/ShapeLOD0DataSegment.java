@@ -1,7 +1,5 @@
 package io.github.tomusin.voyager.segments;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
@@ -38,38 +36,8 @@ public class ShapeLOD0DataSegment extends DataSegment {
 		try {
 			Set<String> validGUIDS = ReadFromBufferUtils.formatGUIDs();
 
-			// Read Data Compression Block header (same layout as LSGDataSegment)
-			long compressionFlag = ReadFromBufferUtils.readUnsignedInt(buffer, segmentStartIndex + 16 + 4 + 4);
-			int compressedDataLength = buffer.getInt(segmentStartIndex + 16 + 4 + 4 + 4);
-			int compressionAlgorithm = ReadFromBufferUtils.readUnsignedByte(buffer, segmentStartIndex + 16 + 4 + 4 + 4 + 4);
-			Logger.info("ShapeLOD0DataSegment: compressionFlag={}, compressedDataLength={}, compressionAlgorithm={}",
-					compressionFlag, compressedDataLength, compressionAlgorithm);
-
-			final BitByteBuffer elementBuffer;
-			final int elementBufferStartIndex;
-
-			if (compressionFlag == 3 && compressionAlgorithm == 3) {
-				// LZMA2 compressed — decompress into fresh buffer, same as LSGDataSegment
-				try {
-					byte[] decompressed = ReadFromBufferUtils.decompressLZMA2FromBuffer(
-							buffer,
-							segmentStartIndex + 16 + 4 + 4 + 4 + 4 + 1,
-							compressedDataLength - 1,
-							fileByteOrder);
-					elementBuffer = new BitByteBuffer(ByteBuffer.wrap(decompressed).order(fileByteOrder));
-					elementBufferStartIndex = 0;
-					Logger.info("ShapeLOD0DataSegment: decompressed {} bytes", decompressed.length);
-				} catch (IOException e) {
-					Logger.error("ShapeLOD0DataSegment: LZMA2 decompression failed: {}", e.getMessage());
-					return;
-				}
-			} else {
-				// Uncompressed — skip compression-block header (compressionFlag field only, 4 bytes)
-				// Data starts right after the 4-byte compressionFlag field
-				elementBuffer = new BitByteBuffer(buffer);
-				elementBufferStartIndex = segmentStartIndex + 16 + 4 + 4 + 4;
-				Logger.info("ShapeLOD0DataSegment: uncompressed, elementBufferStartIndex={}", elementBufferStartIndex);
-			}
+			BitByteBuffer elementBuffer = new BitByteBuffer(buffer);
+			int elementBufferStartIndex = segmentStartIndex + 16 + 4 + 4;
 
 			Map<Integer, LogicalElementHeaderRecord> logicalElementHeaderRecordMap = new HashMap<>();
 			int startIndex = elementBufferStartIndex;
