@@ -69,9 +69,9 @@ public final class DualVFMeshTopologyDecoder {
         if (valence <= 0) {
             throw new IllegalArgumentException("Invalid decoded vertex valence: " + valence);
         }
-        int group = nextValue(vertexGroups, groupReadPosition++, "vertex group");
+        nextValue(vertexGroups, groupReadPosition++, "vertex group");
         int flags = nextValue(vertexFlags, flagReadPosition++, "vertex flag");
-        vertices.add(new Vertex(valence, group, flags));
+        vertices.add(new Vertex(valence, flags));
         return vertices.size() - 1;
     }
 
@@ -272,9 +272,8 @@ public final class DualVFMeshTopologyDecoder {
 
     private static final class Vertex {
         private final int[] faces;
-        private final int group;
         private final int flags;
-        private Vertex(int valence, int group, int flags) { this.faces = new int[valence]; Arrays.fill(faces, -1); this.group = group; this.flags = flags; }
+        private Vertex(int valence, int flags) { this.faces = new int[valence]; Arrays.fill(faces, -1); this.flags = flags; }
     }
 
     private static final class Face {

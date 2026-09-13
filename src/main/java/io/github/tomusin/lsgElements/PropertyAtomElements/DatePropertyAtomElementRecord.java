@@ -1,6 +1,5 @@
 package io.github.tomusin.lsgElements.PropertyAtomElements;
 
-import java.nio.ByteBuffer;
 
 import io.github.tomusin.voyager.datastructures.BufferDeserializable;
 import io.github.tomusin.voyager.datastructures.DatePropertyValueRecord;

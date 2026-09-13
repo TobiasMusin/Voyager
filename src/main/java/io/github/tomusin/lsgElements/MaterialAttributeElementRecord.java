@@ -1,6 +1,5 @@
 package io.github.tomusin.lsgElements;
 
-import java.nio.ByteBuffer;
 
 import io.github.tomusin.lsgDataRecords.BaseAttributeDataFieldsV2Record;
 import io.github.tomusin.lsgDataRecords.BaseAttributeDataRecord;

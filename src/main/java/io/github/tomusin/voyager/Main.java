@@ -1,14 +1,11 @@
 package io.github.tomusin.voyager;
 
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.tinylog.Logger;
 import org.tinylog.configuration.Configuration;

@@ -1,6 +1,5 @@
 package io.github.tomusin.voyager.datastructures;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import io.github.tomusin.voyager.utils.BitByteBuffer;

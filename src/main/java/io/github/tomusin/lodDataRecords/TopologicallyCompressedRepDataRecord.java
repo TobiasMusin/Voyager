@@ -176,10 +176,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return new VecI32(valueCount, decodedData, windowOffsets.jtEndIndex());
 		} else if (codecType == 4) {
 			// ========== CHOPPER CODEC HEADER ==========
-			int chopBits = buffer.get(startIndex + 5) & 0xFF;
-			int valueBias = buffer.getInt(startIndex + 6);
-			int valueSpanBits = buffer.get(startIndex + 10) & 0xFF;
-			
 			VecI32 msbData = readInt32CDP(buffer, startIndex + 11, recursionDepth + 1, false);
 			int lsbStartByte = msbData.jtEndIndex();
 			VecI32 lsbData = readInt32CDP(buffer, lsbStartByte, recursionDepth + 1, false);
@@ -525,14 +521,12 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		private int wordIndex;               // current word index (0-based)
 		private int uVal;                    // current 32-bit word value (bits shift left as consumed)
 		private int nValBits;                // bits remaining in the current word
-		private int nBitsConsumed;           // total bits consumed so far
 		
 		CodeTextBitReader(BitByteBuffer buffer, int codeTextStartByte, int totalBits) {
 			this.buffer = buffer;
 			this.codeTextStartByte = codeTextStartByte;
 			this.totalBits = totalBits;
 			this.wordIndex = 0;
-			this.nBitsConsumed = 0;
 			// Load first word
 			loadNextWord();
 		}
@@ -570,12 +564,10 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 					uVal <<= n;
 				}
 				nValBits -= n;
-				nBitsConsumed += n;
 			} else {
 				// Need bits from current word + next word
 				int nLBits = nValBits;
 				uOut = uVal >>> (32 - n);
-				nBitsConsumed += nLBits;
 				loadNextWord();
 				int nRBits = n - nLBits;
 				uOut |= uVal >>> (32 - nRBits);
@@ -585,7 +577,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 					uVal <<= nRBits;
 				}
 				nValBits -= nRBits;
-				nBitsConsumed += nRBits;
 			}
 			return uOut;
 		}
@@ -632,9 +623,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return result;
 		}
 		
-		int getBitsConsumed() {
-			return nBitsConsumed;
-		}
 	}
 	
 	/**
@@ -665,34 +653,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return value;
 		}
 		
-		/**
-		 * Reads up to 32 signed bits with sign extension
-		 */
-		int readSignedBits(int count) {
-			if (count == 0) return 0;
-			int value = readBits(count);
-			// Sign-extend if necessary
-			if ((value & (1 << (count - 1))) != 0) {
-				value |= (-1 << count);
-			}
-			return value;
-		}
-		
-		/**
-		 * Reads single bit (0 or 1)
-		 */
-		int readBit() {
-			int bytePos = bitPosition / 8;
-			int bitPos = bitPosition % 8;
-			byte b = buffer.get(bytePos);
-			int bit = (b >> (7 - bitPos)) & 1;
-			bitPosition++;
-			return bit;
-		}
-		
-		int bitsRemaining() {
-			return (buffer.capacity() * 8) - bitPosition;
-		}
 	}
 	
 	/**
@@ -704,7 +664,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 	 */
 	private static class ArithmeticBitReader {
 		private BitReader bitReader;
-		private int startBit;  // Initial bit position
 		private int endBit;  // Absolute bit position where encoded data ends
 		private int code;
 		private int low;
@@ -713,7 +672,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		
 		ArithmeticBitReader(BitByteBuffer buffer, int startBit, int lengthBits) {
 			this.bitReader = new BitReader(buffer, startBit);
-			this.startBit = startBit;  // Store initial position
 			this.endBit = startBit + lengthBits;  // Store the boundary
 			
 			// Initialize decoder state (from C++ reference line ~200)
@@ -764,12 +722,6 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return value & 0xFF;
 		}
 		
-		/**
-		 * Returns total bits consumed by this decoder so far (relative to start position)
-		 */
-		int getBitsConsumed() {
-			return bitReader.bitPosition - startBit;
-		}
 	}
 
 	public static TopologicallyCompressedRepDataRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {

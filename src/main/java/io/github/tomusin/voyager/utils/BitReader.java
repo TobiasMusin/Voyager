@@ -1,8 +1,5 @@
 package io.github.tomusin.voyager.utils;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-
 public class BitReader {
     private final BitByteBuffer buffer;
     private int bitPosInByte;  // 0 = MSB, 7 = LSB

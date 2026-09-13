@@ -1,6 +1,5 @@
 package io.github.tomusin.voyager.metaDataElements;
 
-import java.nio.ByteBuffer;
 
 import org.tinylog.Logger;
 

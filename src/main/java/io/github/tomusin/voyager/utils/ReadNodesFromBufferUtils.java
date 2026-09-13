@@ -77,7 +77,6 @@ public class ReadNodesFromBufferUtils {
 		BaseNodeDataRecord baseNodeDataRecord = readBaseNodeData(startIndex, buffer);
 //		int versionNumber = buffer.getShort(baseNodeDataRecord.jtEndIndex());
 		int versionNumber = ReadFromBufferUtils.readUnsignedByte(buffer,  baseNodeDataRecord.jtEndIndex());
-		BBoxF32 reservedField = ReadFromBufferUtils.readBBoxF32(buffer, baseNodeDataRecord.jtEndIndex() + 2);
 		BBoxF32 bboxF32 = ReadFromBufferUtils.readBBoxF32(buffer, baseNodeDataRecord.jtEndIndex() + 2);
 		float area = buffer.getFloat(baseNodeDataRecord.jtEndIndex() + 1 + 6 * 8);
 		VertexCountRangeRecord vertexCountRangeRecord = VertexCountRangeRecord.fromByteBuffer(buffer, baseNodeDataRecord.jtEndIndex() + 1 + 6 * 8 + 4);
