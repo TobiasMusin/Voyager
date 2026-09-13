@@ -114,42 +114,24 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		//   Bytes 11+:   Int32CDP (Chopped MSB Data)
 		//   Then:        Int32CDP (Chopped LSB Data)
 		
-		// Bounds check for minimum header (always at least 5 bytes)
-		if (startIndex < 0 || startIndex + 5 > buffer.capacity()) {
+		// An empty CDP contains only its four-byte value count.
+		if (startIndex < 0 || startIndex + Integer.BYTES > buffer.capacity()) {
 			Logger.error("readInt32CDP: startIndex {} is out of bounds (buffer capacity {})", 
 			            startIndex, buffer.capacity());
 			return new VecI32(0, new int[0], startIndex);
 		}
 		
 		int valueCount = buffer.getInt(startIndex);
+		if (valueCount == 0) {
+			return new VecI32(0, new int[0], startIndex + Integer.BYTES);
+		}
+		if (startIndex + 5 > buffer.capacity()) {
+			Logger.error("readInt32CDP: startIndex {} has no codec byte (buffer capacity {})",
+					startIndex, buffer.capacity());
+			return new VecI32(0, new int[0], startIndex + Integer.BYTES);
+		}
 		int codecType = buffer.get(startIndex + 4) & 0xFF;
 
-		if (valueCount == 0 && codecType == 4) {
-			if (startIndex + 6 > buffer.capacity()) {
-				return new VecI32(0, new int[0], startIndex + 5);
-			}
-			int chopBits = buffer.get(startIndex + 5) & 0xFF;
-			if (chopBits == 0) {
-				return readInt32CDP(buffer, startIndex + 6, recursionDepth + 1, false);
-			}
-			if (startIndex + 11 > buffer.capacity()) {
-				return new VecI32(0, new int[0], startIndex + 5);
-			}
-			VecI32 msbData = readInt32CDP(buffer, startIndex + 11, recursionDepth + 1, false);
-			VecI32 lsbData = readInt32CDP(buffer, msbData.jtEndIndex(), recursionDepth + 1, false);
-			return new VecI32(0, new int[0], lsbData.jtEndIndex());
-		}
-		
-		if (valueCount == 0 && codecType == 5) {
-			VecI32 msbData = readInt32CDP(buffer, startIndex + 5, recursionDepth + 1, false);
-			VecI32 winData = readInt32CDP(buffer, msbData.jtEndIndex(), recursionDepth + 1, false);
-			return new VecI32(0, new int[0], winData.jtEndIndex());
-		}
-		
-		if (valueCount == 0) {
-			return new VecI32(0, new int[0], startIndex + 4);
-		}
-		
 		if (codecType != 4 && codecType != 5 && startIndex + 9 > buffer.capacity()) {
 			Logger.error("readInt32CDP: startIndex {} needs 9 bytes but only {} available", 
 			            startIndex, buffer.capacity() - startIndex);
@@ -176,15 +158,31 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 			return new VecI32(valueCount, decodedData, windowOffsets.jtEndIndex());
 		} else if (codecType == 4) {
 			// ========== CHOPPER CODEC HEADER ==========
+			int chopBits = buffer.get(startIndex + 5) & 0xFF;
+			int valueBias = buffer.getInt(startIndex + 6);
+			int valueSpanBits = buffer.get(startIndex + 10) & 0xFF;
+			int shift = valueSpanBits - chopBits;
+			if (chopBits > 31 || shift < 0 || shift > 31) {
+				Logger.error("Chopper codec at {} has invalid chopBits={} or valueSpanBits={}",
+						startIndex, chopBits, valueSpanBits);
+				return new VecI32(0, new int[0], startIndex + 11);
+			}
 			VecI32 msbData = readInt32CDP(buffer, startIndex + 11, recursionDepth + 1, false);
 			int lsbStartByte = msbData.jtEndIndex();
 			VecI32 lsbData = readInt32CDP(buffer, lsbStartByte, recursionDepth + 1, false);
 			int chopperEndByte = lsbData.jtEndIndex();
 			
-			// Merge the two data sets (MSB and LSB)
-			// For now, just use MSB data as placeholder
+			if (msbData.count() != valueCount || lsbData.count() != valueCount) {
+				Logger.error("Chopper codec at {} expected {} values but decoded MSB={} and LSB={}",
+						startIndex, valueCount, msbData.count(), lsbData.count());
+				return new VecI32(0, new int[0], chopperEndByte);
+			}
+
 			int[] mergedData = new int[valueCount];
-			System.arraycopy(msbData.valueArray(), 0, mergedData, 0, Math.min(msbData.valueArray().length, valueCount));
+			for (int index = 0; index < valueCount; index++) {
+				mergedData[index] = valueBias + (msbData.valueArray()[index] << shift)
+						+ lsbData.valueArray()[index];
+			}
 			
 			return new VecI32(valueCount, mergedData, chopperEndByte);
 		} else {
@@ -244,33 +242,21 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		case 1 -> decodeBitlengthCodec(buffer, encodedDataStartBit, codeTextLengthBits,
 		                                decodedValues, (int) valueCount);
 		case 3 -> {
-			if (!isOobCall) {
-				int probCtxStartBit = endByte * 8;
-				Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
-				int probCtxEndBit = ctx.jtEndBitIndex();
-				int probCtxEndByte = (probCtxEndBit + 7) / 8;
-				
-				boolean hasEscape = false;
-				int[] oobValues = null;
-				if (ctx.entries() != null) {
-					for (var entry : ctx.entries()) {
-						if (entry.isEscapeSymbol()) { hasEscape = true; break; }
-					}
-				}
-				if (hasEscape) {
-					VecI32 oobCdp = readInt32CDP(buffer, probCtxEndByte, recursionDepth + 1, true);
-					oobValues = oobCdp.valueArray();
-					endByte = oobCdp.jtEndIndex();
-				} else {
-					endByte = probCtxEndByte;
-				}
-				
-				decodeArithmeticCodecWithContext(buffer, encodedDataStartBit, codeTextLengthBits,
-				                                 decodedValues, (int) valueCount, ctx, oobValues);
+			int probCtxStartBit = endByte * 8;
+			Int32ProbabilityContextRecord ctx = Int32ProbabilityContextRecord.fromBitBuffer(buffer, probCtxStartBit);
+			int probCtxEndByte = (ctx.jtEndBitIndex() + 7) / 8;
+			boolean hasEscape = ctx.entries().stream().anyMatch(Int32ProbabilityContextTableEntryRecord::isEscapeSymbol);
+			int[] oobValues = null;
+			if (hasEscape) {
+				VecI32 oobCdp = readInt32CDP(buffer, probCtxEndByte, recursionDepth + 1, true);
+				oobValues = oobCdp.valueArray();
+				endByte = oobCdp.jtEndIndex();
 			} else {
-				decodeArithmeticCodec(buffer, encodedDataStartBit, codeTextLengthBits,
-				                     decodedValues, (int) valueCount);
+				endByte = probCtxEndByte;
 			}
+
+			decodeArithmeticCodecWithContext(buffer, encodedDataStartBit, codeTextLengthBits,
+					decodedValues, (int) valueCount, ctx, oobValues);
 		}
 		case 2 -> {
 			Logger.warn("CODEC 2 (Illegal) not implemented");
@@ -438,7 +424,9 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 		final int MASK = 0xFFFF;
 		
 		int startByte = startBit / 8;
-		CodeTextBitReader ctReader = new CodeTextBitReader(buffer, startByte, lengthBits);
+		CodeTextBitReader ctReader = lengthBits > 0
+				? new CodeTextBitReader(buffer, startByte, lengthBits)
+				: null;
 		int bitsRead = 0;
 		
 		int code = 0;
