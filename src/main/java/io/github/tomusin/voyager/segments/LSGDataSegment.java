@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.tinylog.Logger;
 
+import io.github.tomusin.lsgElements.BaseShapeNodeElement;
 import io.github.tomusin.lsgElements.GroupNodeElementRecord;
 import io.github.tomusin.lsgElements.MaterialAttributeElementRecord;
 import io.github.tomusin.lsgElements.MetaDataNodeElementRecord;
@@ -174,6 +175,7 @@ public class LSGDataSegment extends DataSegment{
 
 		        Set<Integer> attributeObjectIDs = switch (obj) {
 		            case GroupNodeElementRecord g -> g.grouNodeDataRecord().baseNodeDataRecord().attributeObjectIds();
+		            case BaseShapeNodeElement b -> b.baseShapeDataRecord().baseNodeDataRecord().attributeObjectIds();
 		            case MetaDataNodeElementRecord m -> m.metaDataNodeDataRecord().groupNodeDataRecord().baseNodeDataRecord().attributeObjectIds();
 		            case PartitionNodeElementRecord p -> p.groupNodeDataRecord().baseNodeDataRecord().attributeObjectIds();
 		            case PartNodeElementRecord p -> p.metaDataNodeDataRecord().groupNodeDataRecord().baseNodeDataRecord().attributeObjectIds();

@@ -113,19 +113,20 @@ public class JTGeometryViewer {
         for (var node : geometryNodes) {
             float[][] coords = node.getVertexCoordinates();
             if (coords != null && coords.length >= 3 && coords[0].length > 0) {
-                allCoords.add(coords);
-                int[] indices = node.getTriangleIndices();
-                if (indices != null && indices.length > 0 && indices.length % 3 == 0) {
+                try {
+                    int[] indices = node.getTriangleIndices();
+                    if (indices == null || indices.length == 0 || indices.length % 3 != 0) continue;
+                    allCoords.add(coords);
                     allIndices.add(indices);
-                } else {
-                    allIndices.add(null);
+                    totalVertices += coords[0].length;
+                } catch (IllegalArgumentException exception) {
+                    System.err.printf("Skipping geometry node %d: %s%n", node.objectID, exception.getMessage());
                 }
-                totalVertices += coords[0].length;
             }
         }
 
         if (allCoords.isEmpty()) {
-            System.out.println("No vertex data found in geometry nodes.");
+            System.out.println("No decodable triangle geometry found to render.");
             return;
         }
 

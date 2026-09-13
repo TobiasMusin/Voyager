@@ -740,11 +740,8 @@ public record TopologicallyCompressedRepDataRecord(VecI32[] faceDegrees, VecI32 
 				byteOffset = faceDegrees[i - 1].jtEndIndex();
 				faceDegrees[i] = readInt32CDP(buffer, byteOffset, PredictorType.PredNULL);
 			}		
-			if (Arrays.stream(faceDegrees).filter(fd -> fd.count() == 0).count() > 0) {
-				Logger.warn("Face Degrees array 0 is empty at byte offset {}", byteOffset);
-			} else {
-				Logger.info("Successfully read 8 Face Degrees arrays, first has {} values", faceDegrees[0].count());
-			}
+			Logger.debug("Read 8 face-degree streams at byte {}; stream sizes={}", byteOffset,
+					Arrays.stream(faceDegrees).map(VecI32::count).toList());
 		} catch (Exception e) {
 			Logger.error("Failed to read Face Degrees arrays with byte offset: {}", byteOffset);
 			Logger.error("Exception: {}", e.getMessage());

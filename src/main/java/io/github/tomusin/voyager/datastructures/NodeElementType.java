@@ -6,8 +6,10 @@ import java.util.function.BiFunction;
 
 import io.github.tomusin.lodElements.TriStripSetShapeLODElementRecord;
 import io.github.tomusin.lsgElements.BaseNodeElementRecord;
+import io.github.tomusin.lsgElements.BaseShapeNodeElement;
 import io.github.tomusin.lsgElements.GroupNodeElementRecord;
 import io.github.tomusin.lsgElements.InstanceNodeElementRecord;
+import io.github.tomusin.lsgElements.LineStyleAttributeElementRecord;
 import io.github.tomusin.lsgElements.LODNodeElementRecord;
 import io.github.tomusin.lsgElements.MaterialAttributeElementRecord;
 import io.github.tomusin.lsgElements.MetaDataNodeElementRecord;
@@ -45,13 +47,12 @@ public enum NodeElementType {
 	PROPERTY_PROXY_META_DATA_ELEMENT("{ce357247-38fb-11d1-a5-06-00-60-97-bd-c6-e1}", PropertyProxyMetaDataElementRecord::fromByteBuffer),
 	// LOD0 Segment
 	TRI_STRIP_SET_SHAPE_LOD_ELEMENT("{10DD10AB-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", TriStripSetShapeLODElementRecord::fromByteBuffer),
-	// Additional node types (stubs — parsed as BaseNode or GroupNode until full deserializers are added)
-	SWITCH_NODE_ELEMENT("{10DD1046-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", GroupNodeElementRecord::fromByteBuffer),
-	TRANSFORM_NODE_ELEMENT("{10DD10C4-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", GroupNodeElementRecord::fromByteBuffer),
-	LINE_STRIP_SET_SHAPE_NODE_ELEMENT("{10DD1048-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
-	POINT_SET_SHAPE_NODE_ELEMENT("{10DD107F-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
-	POLYGON_SET_SHAPE_NODE_ELEMENT("{10DD1059-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
-	LIGHT_NODE_ELEMENT("{10DD10F3-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
+	// Additional node types (stubs — parsed through their documented base data)
+	SWITCH_NODE_ELEMENT("{10DD10F3-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", GroupNodeElementRecord::fromByteBuffer),
+	LINE_STYLE_ATTRIBUTE_ELEMENT("{10DD10C4-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", LineStyleAttributeElementRecord::fromByteBuffer),
+	LINE_STRIP_SET_SHAPE_NODE_ELEMENT("{10DD1046-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseShapeNodeElement::fromByteBuffer),
+	POINT_SET_SHAPE_NODE_ELEMENT("{98134716-0010-0818-19-98-08-00-09-83-5D-5A}", BaseShapeNodeElement::fromByteBuffer),
+	POLYGON_SET_SHAPE_NODE_ELEMENT("{10DD1048-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseShapeNodeElement::fromByteBuffer),
 	// JT 10DD100x series stubs
 	STUB_10DD1001("{10DD1001-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
 	STUB_10DD1004("{10DD1004-2AC8-11D1-9B-6B-00-80-C7-BB-59-97}", BaseNodeElementRecord::fromByteBuffer),
