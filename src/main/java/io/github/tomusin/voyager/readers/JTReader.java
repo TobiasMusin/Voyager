@@ -238,13 +238,17 @@ public class JTReader {
 		    guid = String.valueOf(emptyField);
 		}
 
-		// Check if the tocOffsetUnsigned is within the range of an int
-		if (tocOffset > buffer.capacity()) {
-		    throw new IllegalArgumentException("TOC Offset is out of range of the file: " + tocOffset + " fileLength: " + buffer.capacity());
+		if (tocOffset < 0 || tocOffset > buffer.capacity() - Integer.BYTES) {
+		    throw new IllegalArgumentException("TOC offset is out of range of the file: " + tocOffset
+					+ " fileLength: " + buffer.capacity());
 		}
 
-		// Use the converted int value to fetch data
 		int tocEntryCount = buffer.getInt(tocOffset);
+		long tocEndOffset = (long) tocOffset + Integer.BYTES + (long) tocEntryCount * 32;
+		if (tocEntryCount < 0 || tocEndOffset > buffer.capacity()) {
+			throw new IllegalArgumentException("TOC table is out of range: offset=" + tocOffset
+					+ " entries=" + tocEntryCount + " fileLength=" + buffer.capacity());
+		}
 
 		// Create the FileHeader record
 		fileHeaderRecord = new FileHeaderRecord(
@@ -272,6 +276,7 @@ public class JTReader {
 			if (tocOffsetLong > Integer.MAX_VALUE) {
 				throw new IllegalArgumentException(String.format("\"TOC Offset is out of range of of an int: %s/%s", tocOffsetLong, Integer.MAX_VALUE));
 			}
+			tocOffset = (int) tocOffsetLong;
 		}
 		return tocOffset;
 	}
@@ -320,8 +325,9 @@ public class JTReader {
 		short part2 = buffer.getShort(guidStartIndex + 4);
 		short part3 = buffer.getShort(guidStartIndex + 6);
 		byte[] part4 = new byte[8];
-		buffer.position(guidStartIndex + 8);
-		buffer.get(part4);
+		for (int index = 0; index < part4.length; index++) {
+			part4[index] = buffer.get(guidStartIndex + 8 + index);
+		}
 
 		// Format the GUID as a string
 		return String.format("{%08X-%04X-%04X-%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X}", part1, part2, part3,

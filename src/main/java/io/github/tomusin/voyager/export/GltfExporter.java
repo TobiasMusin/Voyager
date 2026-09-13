@@ -40,9 +40,20 @@ public class GltfExporter {
         for (TreeNode node : geometryNodes) {
             float[][] coords = node.getVertexCoordinates();
             if (coords == null || coords.length < 3) continue;
-            int[] indices = node.getTriangleIndices();
+            int[] indices;
+            try {
+                indices = node.getTriangleIndices();
+            } catch (IllegalArgumentException exception) {
+                System.err.printf("Skipping geometry node %d: %s%n", node.objectID, exception.getMessage());
+                continue;
+            }
             if (indices == null || indices.length == 0 || indices.length % 3 != 0) continue;
             meshes.add(buildMeshData(node, coords, indices));
+        }
+
+        if (meshes.isEmpty()) {
+            System.out.println("No decodable triangle geometry found - nothing to export.");
+            return;
         }
 
         DslJson<Object> dslJson = new DslJson<>();
