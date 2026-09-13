@@ -44,4 +44,21 @@ class DualVFMeshTopologyDecoderTest {
         String edge = Math.min(first, second) + ":" + Math.max(first, second);
         counts.merge(edge, 1, Integer::sum);
     }
+
+    @Test
+    void nistCtcFixtureCompletesDualFaceRingTraversal() {
+        JTReader reader = new JTReader();
+        reader.startReading(Path.of("src", "main", "resources", "10.6", "nist_ctc_01_asme1_ap203.jt").toAbsolutePath());
+
+        for (TreeNode node : reader.getTreeNodeMap().values()) {
+            float[][] coordinates = node.getVertexCoordinates();
+            if (coordinates != null && coordinates.length >= 3 && coordinates[0].length >= 3) {
+                int[] indices = node.getTriangleIndices();
+                assertNotNull(indices);
+                assertTrue(indices.length >= 3 && indices.length % 3 == 0);
+                return;
+            }
+        }
+        throw new AssertionError("Expected a geometry node in the NIST CTC fixture");
+    }
 }

@@ -228,11 +228,18 @@ public final class DualVFMeshTopologyDecoder {
     }
 
     private int nextActiveFace() {
+        while (!activeFaces.isEmpty() && removedFaces[activeFaces.get(activeFaces.size() - 1)]) {
+            activeFaces.remove(activeFaces.size() - 1);
+        }
+
         int candidate = -1;
         int lowestEmptyCount = Integer.MAX_VALUE;
         for (int index = activeFaces.size() - 1; index >= Math.max(0, activeFaces.size() - 16); index--) {
             int faceIndex = activeFaces.get(index);
-            if (removedFaces[faceIndex]) continue;
+            if (removedFaces[faceIndex]) {
+                activeFaces.remove(index);
+                continue;
+            }
             int emptyCount = emptyVertexSlots(faces.get(faceIndex));
             if (emptyCount < lowestEmptyCount) {
                 candidate = faceIndex;
