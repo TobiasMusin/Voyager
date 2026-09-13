@@ -16,10 +16,9 @@ public record CompressedVertexFlagArrayRecord(
 		) implements BufferDeserializable {
 
 	public static CompressedVertexFlagArrayRecord fromByteBuffer(BitByteBuffer buffer, int startIndex) {
-		// Per JT spec the Compressed Vertex Flag Array is a single Int32CDP — no separate leading count field.
-		// The count is embedded in the CDP header itself.
-		VecI32 vertexFlags = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, startIndex);
-		Logger.debug("CompressedVertexFlagArray: vertexFlagCount={} (from CDP)", vertexFlags.count());
-		return new CompressedVertexFlagArrayRecord(vertexFlags.count(), vertexFlags, vertexFlags.jtEndIndex());
+		int vertexFlagCount = buffer.getInt(startIndex);
+		VecI32 vertexFlags = TopologicallyCompressedRepDataRecord.readInt32CDP(buffer, startIndex + 4);
+		Logger.debug("CompressedVertexFlagArray: declared count={}, decoded count={}", vertexFlagCount, vertexFlags.count());
+		return new CompressedVertexFlagArrayRecord(vertexFlagCount, vertexFlags, vertexFlags.jtEndIndex());
 	}
 }

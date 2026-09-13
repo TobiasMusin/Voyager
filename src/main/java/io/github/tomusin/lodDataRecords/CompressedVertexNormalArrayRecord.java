@@ -55,14 +55,7 @@ public record CompressedVertexNormalArrayRecord(
 		} else {
 			Logger.error("Something went wrong when checking the number of QuantBits. Maybe you are at the wrong buffer index.");
 		}
-		// vertexNormalHash must be read at byte-aligned position after CDPs (which consume variable amounts of data)
-		// Ensure byte alignment: round up to next multiple of 4
-		int hashByteOffset = nextVectorStartIndex;
-		if (hashByteOffset % 4 != 0) {
-			hashByteOffset = ((hashByteOffset / 4) + 1) * 4;
-			Logger.debug("Aligning vertexNormalHash read from byte {} to byte {}", nextVectorStartIndex, hashByteOffset);
-		}
-		long vertexNormalHash = ReadFromBufferUtils.readUnsignedInt(buffer, hashByteOffset);
-		return new CompressedVertexNormalArrayRecord(normalCount, numberComponents, quantizationBits, binaryVertexNormals, deeringNormalCodes, vertexNormalHash, hashByteOffset + 4);
+		long vertexNormalHash = ReadFromBufferUtils.readUnsignedInt(buffer, nextVectorStartIndex);
+		return new CompressedVertexNormalArrayRecord(normalCount, numberComponents, quantizationBits, binaryVertexNormals, deeringNormalCodes, vertexNormalHash, nextVectorStartIndex + 4);
 	}
 }
