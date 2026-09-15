@@ -74,7 +74,13 @@ mvn clean package
 
 ## releases
 
-Each platform release contains a converter archive with one native executable for `parse` and `export`, plus a viewer archive that includes the LWJGL native libraries required by `render`.
+Each platform release contains a converter archive with one native executable for `parse` and `export`, plus a viewer archive that includes the LWJGL native libraries required by `render`. The release JAR embeds the Windows and Linux LWJGL libraries and can render on either platform with JDK 25.
+
+Run the release JAR directly:
+
+```cmd
+java --enable-native-access=ALL-UNNAMED -jar voyager-X.Y.Z.jar --render C:\path\to\file.jt
+```
 
 ## run
 
