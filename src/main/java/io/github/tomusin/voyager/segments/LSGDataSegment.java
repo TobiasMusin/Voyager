@@ -47,7 +47,7 @@ public class LSGDataSegment extends DataSegment{
 	/** Root nodes of the scene graph (nodes that are not children of any other node) */
 	private final List<TreeNode> rootNodes = new ArrayList<>();
 	/** All tree nodes indexed by object ID */
-	private final Map<Integer, TreeNode> treeNodeMap = new HashMap<>();
+	private final Map<Integer, TreeNode> treeNodeMap = new ConcurrentHashMap<>();
 
 	public List<TreeNode> getRootNodes() { return rootNodes; }
 	public Map<Integer, TreeNode> getTreeNodeMap() { return treeNodeMap; }

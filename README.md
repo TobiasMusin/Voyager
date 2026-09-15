@@ -34,8 +34,8 @@ this repository is being published as an honest snapshot of the current state. i
 
 - jdk 25
 - apache maven 3.9 or newer
-- windows is required for the current lwjgl-based viewer/render mode and the bundled windows native libraries; the parsing and export code should remain buildable without that mode
-- for native image builds: graalvm and the required native toolchain for windows
+- parsing and export work on any platform with jdk 25 and maven; the lwjgl viewer downloads matching windows, linux, or macos x64 and arm64 natives automatically
+- for native image builds: a Java 25-compatible GraalVM and platform-native toolchain are required
 
 ## build
 
@@ -51,6 +51,13 @@ if you need to point the build to a specific jdk, set `JAVA_HOME` first:
 ```cmd
 set "JAVA_HOME=C:\path\to\jdk-25"
 set "PATH=%JAVA_HOME%\bin;%PATH%"
+```
+
+On PowerShell:
+
+```powershell
+$env:JAVA_HOME = 'C:\path\to\jdk-25'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
 ```
 
 run the tests:
@@ -78,6 +85,8 @@ render a file:
 ```cmd
 mvn exec:java -Dexec.args="--render C:\path\to\file.jt"
 ```
+
+On Linux or macOS, use POSIX paths in the same command.
 
 The viewer starts with a grey Blinn-Phong material and directional light. Press `C` to toggle coordinate-based colors.
 
