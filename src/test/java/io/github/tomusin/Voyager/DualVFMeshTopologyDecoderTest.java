@@ -3,7 +3,9 @@ package io.github.tomusin.Voyager;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,8 +49,10 @@ class DualVFMeshTopologyDecoderTest {
 
     @Test
     void nistCtcFixtureCompletesDualFaceRingTraversal() {
+        Path fixture = Path.of("src", "main", "resources", "10.6", "nist_ctc_01_asme1_ap203.jt");
+        assumeTrue(Files.isRegularFile(fixture), "NIST CTC fixture is not included in the repository");
         JTReader reader = new JTReader();
-        reader.startReading(Path.of("src", "main", "resources", "10.6", "nist_ctc_01_asme1_ap203.jt").toAbsolutePath());
+        reader.startReading(fixture.toAbsolutePath());
 
         for (TreeNode node : reader.getTreeNodeMap().values()) {
             float[][] coordinates = node.getVertexCoordinates();
