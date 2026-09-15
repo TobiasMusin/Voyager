@@ -48,7 +48,10 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: mvn --batch-mode clean package -Pnative -Drevision=${VERSION}
+      - shell: bash
+        env:
+          MAVEN_ARGS: ""
+        run: mvn --batch-mode clean package -Pnative -Drevision=${VERSION}
       - if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/Stage-Release.ps1 -Platform windows -Version $env:VERSION
@@ -70,7 +73,7 @@ jobs:
     needs: [jar, native]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.1.3
         with:
           path: release
           merge-multiple: true
