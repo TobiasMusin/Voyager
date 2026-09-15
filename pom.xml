@@ -102,7 +102,7 @@
 	</dependencyManagement>
 
 	<properties>
-		<maven.compiler.release>24</maven.compiler.release>
+		<maven.compiler.release>25</maven.compiler.release>
 		<main.class>io.github.tomusin.voyager.Main</main.class>
 		<junit.jupiter.version>5.12.2</junit.jupiter.version>
 		<lwjgl.version>3.3.4</lwjgl.version>
