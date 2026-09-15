@@ -7,7 +7,7 @@
 
 	<groupId>io.github.tomusin</groupId>
 	<artifactId>Voyager</artifactId>
-	<version>0.0.1</version>
+	<version>${revision}</version>
 
 	<parent>
 		<groupId>at.stderr</groupId>
@@ -103,6 +103,7 @@
 
 	<properties>
 		<maven.compiler.release>25</maven.compiler.release>
+		<revision>0.0.1</revision>
 		<main.class>io.github.tomusin.voyager.Main</main.class>
 		<junit.jupiter.version>5.12.2</junit.jupiter.version>
 		<lwjgl.version>3.4.3</lwjgl.version>

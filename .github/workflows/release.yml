@@ -20,8 +20,9 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: mvn --batch-mode clean verify -Prelease-jar -Dgpg.skip=true
+      - run: mvn --batch-mode clean verify -Prelease-jar -Drevision=${VERSION} -Dgpg.skip=true
       - run: mkdir -p release && cp target/Voyager-${VERSION}-all.jar release/voyager-${VERSION}.jar
+      - run: cd release && sha256sum voyager-${VERSION}.jar > voyager-${VERSION}.jar.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: jar
@@ -47,17 +48,23 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: mvn --batch-mode clean package -Pnative
+      - run: mvn --batch-mode clean package -Pnative -Drevision=${VERSION}
       - if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/Stage-Release.ps1 -Platform windows -Version $env:VERSION
       - if: runner.os == 'Linux'
         shell: bash
         run: chmod +x scripts/stage-release.sh && ./scripts/stage-release.sh linux "$VERSION"
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Name)" } | Set-Content release/SHA256SUMS-windows.txt
+      - if: runner.os == 'Linux'
+        shell: bash
+        run: cd release && sha256sum *.zip > SHA256SUMS-linux.txt
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.platform }}
-          path: release/*.zip
+          path: release/*
 
   publish:
     needs: [jar, native]
