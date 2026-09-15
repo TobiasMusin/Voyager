@@ -32,7 +32,7 @@ this repository is being published as an honest snapshot of the current state. i
 
 ## requirements
 
-- jdk 24
+- jdk 25
 - apache maven 3.9 or newer
 - windows is required for the current lwjgl-based viewer/render mode and the bundled windows native libraries; the parsing and export code should remain buildable without that mode
 - for native image builds: graalvm and the required native toolchain for windows
@@ -49,7 +49,7 @@ mvn -version
 if you need to point the build to a specific jdk, set `JAVA_HOME` first:
 
 ```cmd
-set "JAVA_HOME=C:\path\to\jdk-24"
+set "JAVA_HOME=C:\path\to\jdk-25"
 set "PATH=%JAVA_HOME%\bin;%PATH%"
 ```
 
