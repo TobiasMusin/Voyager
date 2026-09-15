@@ -10,7 +10,9 @@ import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -31,16 +33,24 @@ public class JTGeometryViewer {
     private long window;
     private int vao, vbo, ibo, shaderProgram;
     private int vertexCount, triangleIndexCount;
+    private final Map<RenderSceneNode, GpuMesh> sceneMeshes = new IdentityHashMap<>();
+    private RenderScene renderScene;
+    private SceneGraphWindow sceneGraphWindow;
 
     // Camera
-    private float rotX = 25f, rotY = -35f;
-    private float zoom = 2.5f;
+    private volatile float rotX = 25f, rotY = -35f;
+    private volatile float zoom = 2.5f;
     private double lastMX, lastMY;
     private boolean dragging;
-    private boolean coordinateColorMode;
+    private volatile boolean coordinateColorMode;
+    private volatile boolean drawFaces = true;
+    private volatile boolean drawEdges = true;
+    private volatile boolean drawVertices = true;
 
     // Geometry centre / extent for framing
     private float cx, cy, cz, extent;
+
+    private record GpuMesh(int vao, int vbo, int ibo, int vertexCount, int triangleIndexCount) { }
 
     // ───────── shaders ─────────
     private static final String VERT_SRC = """
@@ -60,11 +70,17 @@ public class JTGeometryViewer {
             in vec3 vWorldPos;
             uniform vec3 uCameraPosition;
             uniform int uCoordinateColorMode;
+            uniform int uSelected;
             out vec4 fragColor;
             void main() {
                 if (uCoordinateColorMode != 0) {
                     vec3 coordinateColor = (vWorldPos - vec3(%CX%, %CY%, %CZ%)) / %EXT% * 0.5 + 0.5;
                     fragColor = vec4(coordinateColor, 1.0);
+                    return;
+                }
+
+                if (uSelected != 0) {
+                    fragColor = vec4(1.0, 0.58, 0.10, 1.0);
                     return;
                 }
 
@@ -153,6 +169,11 @@ public class JTGeometryViewer {
         new JTGeometryViewer().launchWithCoords(merged, triangles);
     }
 
+    /** Launch the viewer with the parsed JT scene hierarchy retained for rendering. */
+    public static void showScene(List<io.github.tomusin.voyager.datastructures.TreeNode> roots) {
+        new JTGeometryViewer().launchWithScene(roots);
+    }
+
     /**
      * Launch the viewer with geometry from a parsed {@link CompressedVertexCoordinateArrayRecord}.
      */
@@ -177,6 +198,20 @@ public class JTGeometryViewer {
 //        }
         init();
         uploadGeometry(coords, triangleIndices);
+        loop();
+        cleanup();
+    }
+
+    private void launchWithScene(List<io.github.tomusin.voyager.datastructures.TreeNode> roots) {
+        renderScene = RenderScene.fromRoots(roots);
+        if (renderScene.visibleGeometryNodes().isEmpty()) {
+            System.out.println("No decodable triangle geometry found to render.");
+            return;
+        }
+        init();
+        uploadScene();
+        sceneGraphWindow = SceneGraphWindow.show(renderScene, this::resetCamera, this::setCoordinateColorMode, this::setDrawFaces,
+            this::setDrawEdges, this::setDrawVertices);
         loop();
         cleanup();
     }
@@ -222,6 +257,15 @@ public class JTGeometryViewer {
             if (key == GLFW_KEY_C && action == GLFW_RELEASE) {
                 coordinateColorMode = !coordinateColorMode;
                 System.out.println(coordinateColorMode ? "Coordinate color mode" : "Blinn-Phong lighting mode");
+            }
+            if (key == GLFW_KEY_F && action == GLFW_RELEASE) drawFaces = !drawFaces;
+            if (key == GLFW_KEY_E && action == GLFW_RELEASE) drawEdges = !drawEdges;
+            if (key == GLFW_KEY_V && action == GLFW_RELEASE) drawVertices = !drawVertices;
+            if (key == GLFW_KEY_R && action == GLFW_RELEASE) resetCamera();
+            if (renderScene != null && key == GLFW_KEY_UP && action == GLFW_RELEASE) renderScene.selectNext(-1);
+            if (renderScene != null && key == GLFW_KEY_DOWN && action == GLFW_RELEASE) renderScene.selectNext(1);
+            if (renderScene != null && key == GLFW_KEY_SPACE && action == GLFW_RELEASE) {
+                renderScene.toggleSelectedVisibility();
             }
         });
 
@@ -302,6 +346,46 @@ public class JTGeometryViewer {
         shaderProgram = createProgram(vs, fs);
     }
 
+    private void uploadScene() {
+        float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+        float minZ = Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+        for (RenderSceneNode node : renderScene.visibleGeometryNodes()) {
+            RenderMesh mesh = node.mesh();
+            float[] positions = mesh.positions();
+            for (int index = 0; index < positions.length; index += 3) {
+                minX = Math.min(minX, positions[index]);
+                maxX = Math.max(maxX, positions[index]);
+                minY = Math.min(minY, positions[index + 1]);
+                maxY = Math.max(maxY, positions[index + 1]);
+                minZ = Math.min(minZ, positions[index + 2]);
+                maxZ = Math.max(maxZ, positions[index + 2]);
+            }
+            sceneMeshes.put(node, uploadMesh(mesh));
+        }
+        cx = (minX + maxX) / 2f;
+        cy = (minY + maxY) / 2f;
+        cz = (minZ + maxZ) / 2f;
+        extent = Math.max(Math.max(maxX - minX, maxY - minY), maxZ - minZ);
+        if (!Float.isFinite(extent) || extent < 1e-6f) extent = 1f;
+        shaderProgram = createProgram(substituteShaderConstants(VERT_SRC), substituteShaderConstants(FRAG_SRC));
+    }
+
+    private GpuMesh uploadMesh(RenderMesh mesh) {
+        int meshVao = glGenVertexArrays();
+        glBindVertexArray(meshVao);
+        int meshVbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, meshVbo);
+        glBufferData(GL_ARRAY_BUFFER, mesh.positions(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+        glEnableVertexAttribArray(0);
+        int meshIbo = glGenBuffers();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshIbo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.triangleIndices(), GL_STATIC_DRAW);
+        glBindVertexArray(0);
+        return new GpuMesh(meshVao, meshVbo, meshIbo, mesh.vertexCount(), mesh.triangleIndices().length);
+    }
+
     private String substituteShaderConstants(String shaderSource) {
         return shaderSource
                 .replace("%CX%", String.valueOf(cx))
@@ -344,22 +428,14 @@ public class JTGeometryViewer {
                     cameraPosition.x, cameraPosition.y, cameraPosition.z);
             glUniform1i(glGetUniformLocation(shaderProgram, "uCoordinateColorMode"), coordinateColorMode ? 1 : 0);
 
-            glBindVertexArray(vao);
-
-            if (triangleIndexCount > 0) {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                glDrawElements(GL_TRIANGLES, triangleIndexCount, GL_UNSIGNED_INT, 0);
-
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                glLineWidth(2f);
-                glDrawElements(GL_TRIANGLES, triangleIndexCount, GL_UNSIGNED_INT, 0);
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            if (renderScene == null) {
+                drawMesh(new GpuMesh(vao, vbo, ibo, vertexCount, triangleIndexCount), false);
+            } else {
+                for (RenderSceneNode node : renderScene.visibleGeometryNodes()) {
+                    GpuMesh mesh = sceneMeshes.get(node);
+                    if (mesh != null) drawMesh(mesh, node.selected());
+                }
             }
-
-            // Draw vertices as points
-            glDrawArrays(GL_POINTS, 0, vertexCount);
-
-            glBindVertexArray(0);
             glUseProgram(0);
 
             glfwSwapBuffers(window);
@@ -367,12 +443,58 @@ public class JTGeometryViewer {
         }
     }
 
+    private void drawMesh(GpuMesh mesh, boolean selected) {
+        glBindVertexArray(mesh.vao());
+        glUniform1i(glGetUniformLocation(shaderProgram, "uSelected"), selected ? 1 : 0);
+        if (mesh.triangleIndexCount() > 0 && drawFaces) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glDrawElements(GL_TRIANGLES, mesh.triangleIndexCount(), GL_UNSIGNED_INT, 0);
+        }
+        if (mesh.triangleIndexCount() > 0 && drawEdges) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            glLineWidth(2f);
+            glDrawElements(GL_TRIANGLES, mesh.triangleIndexCount(), GL_UNSIGNED_INT, 0);
+        }
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        if (drawVertices) glDrawArrays(GL_POINTS, 0, mesh.vertexCount());
+        glBindVertexArray(0);
+    }
+
+    private void resetCamera() {
+        rotX = 25f;
+        rotY = -35f;
+        zoom = 2.5f;
+    }
+
+    private void setCoordinateColorMode(boolean enabled) {
+        coordinateColorMode = enabled;
+    }
+
+    private void setDrawFaces(boolean enabled) {
+        drawFaces = enabled;
+    }
+
+    private void setDrawEdges(boolean enabled) {
+        drawEdges = enabled;
+    }
+
+    private void setDrawVertices(boolean enabled) {
+        drawVertices = enabled;
+    }
+
     // ───────── cleanup ─────────
 
     private void cleanup() {
+        if (sceneGraphWindow != null) sceneGraphWindow.close();
         glDeleteVertexArrays(vao);
         glDeleteBuffers(vbo);
         if (ibo != 0) glDeleteBuffers(ibo);
+        for (GpuMesh mesh : sceneMeshes.values()) {
+            glDeleteVertexArrays(mesh.vao());
+            glDeleteBuffers(mesh.vbo());
+            glDeleteBuffers(mesh.ibo());
+        }
+        sceneMeshes.clear();
         glDeleteProgram(shaderProgram);
 
         glfwFreeCallbacks(window);

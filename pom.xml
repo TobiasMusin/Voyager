@@ -7,7 +7,7 @@
 
 	<groupId>io.github.tomusin</groupId>
 	<artifactId>Voyager</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>${revision}</version>
 
 	<parent>
 		<groupId>at.stderr</groupId>
@@ -103,6 +103,7 @@
 
 	<properties>
 		<maven.compiler.release>25</maven.compiler.release>
+		<revision>0.0.1</revision>
 		<main.class>io.github.tomusin.voyager.Main</main.class>
 		<junit.jupiter.version>5.12.2</junit.jupiter.version>
 		<lwjgl.version>3.4.3</lwjgl.version>
@@ -144,6 +145,43 @@
 	</build>
 
 	<profiles>
+		<profile>
+			<id>release-jar</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-shade-plugin</artifactId>
+						<version>3.6.0</version>
+						<executions>
+							<execution>
+								<phase>package</phase>
+								<goals><goal>shade</goal></goals>
+								<configuration>
+									<shadedArtifactAttached>true</shadedArtifactAttached>
+									<shadedClassifierName>all</shadedClassifierName>
+									<transformers>
+										<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+											<mainClass>${main.class}</mainClass>
+										</transformer>
+									</transformers>
+									<filters>
+										<filter>
+											<artifact>*:*</artifact>
+											<excludes>
+												<exclude>META-INF/*.SF</exclude>
+												<exclude>META-INF/*.DSA</exclude>
+												<exclude>META-INF/*.RSA</exclude>
+											</excludes>
+										</filter>
+									</filters>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
 		<profile>
 			<id>lwjgl-linux</id>
 			<activation>

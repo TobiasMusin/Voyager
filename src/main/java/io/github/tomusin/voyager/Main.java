@@ -124,7 +124,7 @@ public class Main {
 		switch (cli.mode()) {
 			case RENDER -> {
 				if (!allGeoNodes.isEmpty()) {
-					JTGeometryViewer.showAll(allGeoNodes);
+					JTGeometryViewer.showScene(allRoots);
 				} else {
 					Logger.warn("No renderable geometry found.");
 					return 1;

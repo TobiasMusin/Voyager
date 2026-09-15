@@ -16,7 +16,7 @@ this repository is being published as an honest snapshot of the current state. i
 - reconstructs indexed triangle topology for supported topologically compressed ShapeLOD data
 - exports indexed triangle meshes to a `.gltf` file
 - writes gltf with an embedded base64 buffer, so no separate `.bin` file is needed
-- provides a simple opengl viewer with filled faces, triangle edges, and vertices for decoded meshes
+- provides a simple opengl viewer with a retained JT scene graph, per-node visibility, filled faces, triangle edges, and vertices for decoded meshes
 - supports parsing one file, multiple files, or a directory of `.jt` files
 - supports `parse`, `render`, and `export` modes
 
@@ -72,6 +72,10 @@ build the project:
 mvn clean package
 ```
 
+## releases
+
+Each platform release contains a converter archive with one native executable for `parse` and `export`, plus a viewer archive that includes the LWJGL native libraries required by `render`.
+
 ## run
 
 parse a file:
@@ -88,7 +92,20 @@ mvn exec:java -Dexec.args="--render C:\path\to\file.jt"
 
 On Linux or macOS, use POSIX paths in the same command.
 
-The viewer starts with a grey Blinn-Phong material and directional light. Press `C` to toggle coordinate-based colors.
+The viewer starts with a grey Blinn-Phong material and directional light. Rendered shapes retain their JT node identity, so selection and visibility apply to individual nodes rather than the full model.
+
+The viewer also opens a **JT Scene Graph** control window. Select a node in the expandable tree to highlight its geometry; use **Toggle Visibility** to hide/show a node and its rendered descendants. Hover a node to inspect its parsed metadata and attributes for debugging.
+
+Viewer controls:
+
+- `C`: toggle coordinate-based colors
+- `F`: toggle filled faces
+- `E`: toggle triangle edges
+- `V`: toggle vertices
+- `R`: reset the camera
+- Up/Down: select the previous/next scene node in tree order
+- Space: toggle visibility of the selected node and its rendered descendants
+- Escape: close the viewer
 
 export one file to a specific gltf path:
 
