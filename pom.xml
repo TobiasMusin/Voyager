@@ -226,6 +226,9 @@
 		</profile>
 		<profile>
 			<id>native</id>
+			<properties>
+				<maven.compiler.release>24</maven.compiler.release>
+			</properties>
 			<build>
 				<plugins>
 					<!-- Maven Shade Plugin to create an uber JAR and remove

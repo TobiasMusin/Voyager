@@ -210,8 +210,10 @@ public class JTGeometryViewer {
         }
         init();
         uploadScene();
-        sceneGraphWindow = SceneGraphWindow.show(renderScene, this::resetCamera, this::setCoordinateColorMode, this::setDrawFaces,
-            this::setDrawEdges, this::setDrawVertices);
+        if (System.getProperty("org.graalvm.nativeimage.imagecode") == null) {
+            sceneGraphWindow = SceneGraphWindow.show(renderScene, this::resetCamera, this::setCoordinateColorMode, this::setDrawFaces,
+                this::setDrawEdges, this::setDrawVertices);
+        }
         loop();
         cleanup();
     }

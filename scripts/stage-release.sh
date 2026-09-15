@@ -12,6 +12,7 @@ rm -rf "$stage_directory"
 mkdir -p "$stage_directory" "$release_directory"
 cp target/Voyager "$stage_directory/voyager"
 cp README.md LICENCE "$stage_directory/"
+find target -maxdepth 1 -type f -name '*.so' -exec cp {} "$stage_directory" \;
 zip -q -j "${release_directory}/${converter_name}.zip" target/Voyager
 
 for module in lwjgl lwjgl-glfw lwjgl-opengl; do

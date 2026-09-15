@@ -20,6 +20,8 @@ New-Item -ItemType Directory -Path $stageDirectory | Out-Null
 Copy-Item $nativeImage (Join-Path $stageDirectory (Split-Path $nativeImage -Leaf))
 Copy-Item 'README.md' (Join-Path $stageDirectory 'README.md')
 Copy-Item 'LICENCE' (Join-Path $stageDirectory 'LICENCE')
+Get-ChildItem 'target' -File -Filter '*.dll' |
+    ForEach-Object { Copy-Item $_.FullName (Join-Path $stageDirectory $_.Name) }
 
 $classifier = "natives-$Platform"
 $lwjglModules = 'lwjgl', 'lwjgl-glfw', 'lwjgl-opengl'
