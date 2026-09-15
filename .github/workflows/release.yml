@@ -20,7 +20,7 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: mvn --batch-mode clean verify -Prelease-jar
+      - run: mvn --batch-mode clean verify -Prelease-jar -Dgpg.skip=true
       - run: mkdir -p release && cp target/Voyager-${VERSION}-all.jar release/voyager-${VERSION}.jar
       - uses: actions/upload-artifact@v4
         with:
