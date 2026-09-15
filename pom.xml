@@ -60,19 +60,19 @@
 			<groupId>org.lwjgl</groupId>
 			<artifactId>lwjgl</artifactId>
 			<version>${lwjgl.version}</version>
-			<classifier>natives-windows</classifier>
+			<classifier>${lwjgl.natives}</classifier>
 		</dependency>
 		<dependency>
 			<groupId>org.lwjgl</groupId>
 			<artifactId>lwjgl-glfw</artifactId>
 			<version>${lwjgl.version}</version>
-			<classifier>natives-windows</classifier>
+			<classifier>${lwjgl.natives}</classifier>
 		</dependency>
 		<dependency>
 			<groupId>org.lwjgl</groupId>
 			<artifactId>lwjgl-opengl</artifactId>
 			<version>${lwjgl.version}</version>
-			<classifier>natives-windows</classifier>
+			<classifier>${lwjgl.natives}</classifier>
 		</dependency>
 		<!-- JOML for math -->
 		<dependency>
@@ -102,10 +102,11 @@
 	</dependencyManagement>
 
 	<properties>
-		<maven.compiler.release>24</maven.compiler.release>
+		<maven.compiler.release>25</maven.compiler.release>
 		<main.class>io.github.tomusin.voyager.Main</main.class>
 		<junit.jupiter.version>5.12.2</junit.jupiter.version>
-		<lwjgl.version>3.3.4</lwjgl.version>
+		<lwjgl.version>3.4.3</lwjgl.version>
+		<lwjgl.natives>natives-windows</lwjgl.natives>
 	</properties>
 
 	<build>
@@ -143,6 +144,41 @@
 	</build>
 
 	<profiles>
+		<profile>
+			<id>lwjgl-linux</id>
+			<activation>
+				<os><name>Linux</name></os>
+			</activation>
+			<properties><lwjgl.natives>natives-linux</lwjgl.natives></properties>
+		</profile>
+		<profile>
+			<id>lwjgl-linux-arm64</id>
+			<activation>
+				<os><name>Linux</name><arch>aarch64</arch></os>
+			</activation>
+			<properties><lwjgl.natives>natives-linux-arm64</lwjgl.natives></properties>
+		</profile>
+		<profile>
+			<id>lwjgl-macos</id>
+			<activation>
+				<os><name>Mac OS X</name></os>
+			</activation>
+			<properties><lwjgl.natives>natives-macos</lwjgl.natives></properties>
+		</profile>
+		<profile>
+			<id>lwjgl-macos-arm64</id>
+			<activation>
+				<os><name>Mac OS X</name><arch>aarch64</arch></os>
+			</activation>
+			<properties><lwjgl.natives>natives-macos-arm64</lwjgl.natives></properties>
+		</profile>
+		<profile>
+			<id>lwjgl-windows-arm64</id>
+			<activation>
+				<os><family>Windows</family><arch>aarch64</arch></os>
+			</activation>
+			<properties><lwjgl.natives>natives-windows-arm64</lwjgl.natives></properties>
+		</profile>
 		<profile>
 			<id>native</id>
 			<build>

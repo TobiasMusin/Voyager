@@ -6,7 +6,12 @@ set JAR_PATH=target\Voyager-0.0.1-SNAPSHOT.jar
 set INPUT_DIR=src\main\resources
 set CONFIG_DIR=generated-config
 set TARGET_CONFIG_DIR=src\main\resources\META-INF\native-image\io.github.tomusin\voyager
-set JAVA_HOME=C:\EigeneProgramme\GraalVM\graalvm-jdk-24_windows-x64_bin\graalvm-jdk-24.0.1+9.1
+if "%JAVA_HOME%"=="" (
+    echo Error: Set JAVA_HOME to a Java 25-compatible GraalVM installation.
+    exit /b 1
+)
+
+set "PATH=%JAVA_HOME%\bin;%PATH%"
 
 
 :: ==== STEP 1: Run the application with tracing agent ====
