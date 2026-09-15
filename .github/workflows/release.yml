@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  jar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set release version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: mvn --batch-mode clean verify -Prelease-jar -Drevision=${VERSION} -Dgpg.skip=true
+      - run: mkdir -p release && cp target/Voyager-${VERSION}-all.jar release/voyager-${VERSION}.jar
+      - run: cd release && sha256sum voyager-${VERSION}.jar > voyager-${VERSION}.jar.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: release/*.jar
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set release version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - shell: bash
+        env:
+          MAVEN_ARGS: ""
+        run: mvn --batch-mode clean package -Pnative -Drevision=${VERSION}
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/Stage-Release.ps1 -Platform windows -Version $env:VERSION
+      - if: runner.os == 'Linux'
+        shell: bash
+        run: chmod +x scripts/stage-release.sh && ./scripts/stage-release.sh linux "$VERSION"
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Name)" } | Set-Content release/SHA256SUMS-windows.txt
+      - if: runner.os == 'Linux'
+        shell: bash
+        run: cd release && sha256sum *.zip > SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: release/*
+
+  publish:
+    needs: [jar, native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*
